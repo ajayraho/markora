@@ -10,7 +10,7 @@ A Markdown reader that renders `.md` files like a modern AI chat. Pick **Claude 
 - **Editor with live preview**: press `Ctrl+E` (or the pencil) for a side-by-side editor. The preview updates as you type, the editor scroll-syncs, the divider drags (double-click to reset), and the pane collapses. It has a small toolbar, list auto-continue, and `Tab` indent
 - **Saving**: notes autosave in the browser. For files opened from disk, `Ctrl+S` writes back to the file and `Ctrl+Shift+S` saves as. A note's **Save as…** turns it into a real `.md` file
 - **Library** (`Ctrl+Shift+L`): up to 50 notes and recent files, stored in IndexedDB. Open tabs come back when you restart, unsaved edits to disk files are kept as drafts, and you get search and delete
-- **Tabs**: multiple files open at once, with a sticky outline of headings. Double-click a tab or press `F2` to rename it. Renaming a disk file renames it on disk
+- **Tabs**: multiple files open at once, with a sticky outline of headings. Drag tabs to reorder (or `Ctrl+Shift+PgUp/PgDn`). Right-click a tab to pin, rename or close it. Double-click or `F2` renames, and renaming a disk file renames it on disk
 - **Offline**: everything, including fonts, is bundled, so it works with no internet once installed
 - **Other ways to open**: drag-and-drop or paste Markdown text
 - **Shortcuts**: `Ctrl+O` open, `Alt+N` new note, `Ctrl+E` editor, `Ctrl+S` save, `Ctrl+Shift+L` library, `Ctrl+\` outline, `Alt+W` close tab, `Ctrl+Tab` switch tab, `Ctrl+P` print
@@ -18,7 +18,7 @@ A Markdown reader that renders `.md` files like a modern AI chat. Pick **Claude 
 
 ## Use it
 
-Open the deployed site in **Edge or Chrome** and click **Install** in the top bar (or the install icon in the address bar). After that it runs as its own app, works offline, and updates itself whenever a new version is deployed.
+Open the deployed site in **Edge or Chrome** and click the install icon in the address bar. After that it runs as its own app, works offline, and updates itself whenever a new version is deployed.
 
 ### Make it your default .md viewer (Windows)
 
