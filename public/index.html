@@ -29,9 +29,6 @@
     </div>
     <nav class="tabs" id="tabs" aria-label="Open files"></nav>
     <div class="actions">
-      <button class="btn hidden" id="installBtn" title="Install Markora so it appears in Open with…">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg><span class="label">Install</span>
-      </button>
       <button class="btn icon" id="libraryBtn" title="Library: saved notes &amp; recent files (Ctrl+Shift+L)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H18v-5"/><path d="M8 7h6"/></svg>
       </button>
@@ -45,8 +42,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M8 12h12M12 18h8"/></svg>
       </button>
       <div class="seg" role="group" aria-label="Style">
-        <button data-style-btn="claude">Claude</button>
-        <button data-style-btn="chatgpt">ChatGPT</button>
+        <button data-style-btn="claude" class="glyph serif" title="Claude style: serif, warm paper" aria-label="Claude style">A</button>
+        <button data-style-btn="chatgpt" class="glyph sans" title="ChatGPT style: sans-serif, clean" aria-label="ChatGPT style">A</button>
       </div>
       <button class="btn icon" id="modeBtn" title="Theme: system"></button>
     </div>

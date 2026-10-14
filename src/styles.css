@@ -458,3 +458,25 @@ body.resizing { cursor: col-resize; user-select: none; }
 .tab-add { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: 2px 0 0 2px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
 .tab-add:hover { background: var(--accent-soft); color: var(--fg); }
 .tab-add svg { width: 16px; height: 16px; }
+
+/* Style switch glyphs */
+.seg button.glyph { width: 30px; padding: 0; font-size: 15px; line-height: 1; }
+.seg button.glyph.serif { font-family: "Source Serif", Georgia, serif; font-weight: 600; }
+.seg button.glyph.sans { font-family: "Inter", system-ui, sans-serif; font-weight: 600; }
+
+/* Pinned tabs, drag & drop */
+.tab.pinned { padding: 0 10px 0 8px; gap: 5px; }
+.tab .pin { display: grid; place-items: center; color: var(--accent); flex: none; }
+.tab .pin svg { width: 13px; height: 13px; }
+.tab.dragging { opacity: .4; }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.tab.drop-after { box-shadow: inset -2px 0 0 var(--accent); }
+.tabs .tab.pinned + .tab:not(.pinned) { margin-left: 8px; }
+
+/* Tab context menu */
+.tab-menu { position: fixed; z-index: 70; min-width: 220px; padding: 5px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.16); }
+.tab-menu button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 16px; height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: none; font-size: 13px; color: var(--fg); cursor: pointer; text-align: left; }
+.tab-menu button:hover:not(:disabled) { background: var(--accent-soft); }
+.tab-menu button:disabled { color: var(--muted); opacity: .55; cursor: default; }
+.tab-menu kbd { border: 0; background: none; padding: 0; color: var(--muted); font-size: 11px; }
+.tab-menu .sep { height: 1px; margin: 4px 6px; background: var(--border); }

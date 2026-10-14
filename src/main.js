@@ -11,7 +11,7 @@ const els = {
   layout: document.querySelector(".layout"),
   tabs: $("tabs"), empty: $("empty"), doc: $("doc"), md: $("md"), meta: $("meta"),
   outline: $("outline"), drop: $("dropzone"), toast: $("toast"), input: $("fileInput"),
-  modeBtn: $("modeBtn"), installBtn: $("installBtn"),
+  modeBtn: $("modeBtn"),
   pane: $("editorPane"), editor: $("editor"), edTitle: $("edTitle"), edStatus: $("edStatus"),
   saveBtn: $("saveBtn"), edTools: $("edTools"), resizer: $("resizer"), editBtn: $("editBtn"),
   library: $("library"), libList: $("libList"), libCount: $("libCount"), libSearch: $("libSearch"),
@@ -47,6 +47,7 @@ const active = () => docs.find((d) => d.id === activeId);
    Persistence (IndexedDB)
    ============================================================ */
 const record = (d) => ({
+  pinned: !!d.pinned,
   id: d.id, kind: d.kind, name: d.name,
   text: d.text.length <= MAX_TEXT ? d.text : null,
   handle: d.handle || null, dirty: !!d.dirty,
@@ -107,6 +108,7 @@ async function restoreSession() {
     }
     docs.push(d);
   }
+  docs.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)); // stable: pinned first, order kept
   activeId = docs.some((d) => d.id === session.active) ? session.active : docs[0]?.id ?? null;
 }
 
@@ -367,21 +369,129 @@ function closeDoc(id, { force = false } = {}) {
   saveSession();
 }
 
+const PIN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>`;
+
+/* ---------- Reorder: drag & drop (pinned tabs always stay first) ---------- */
+let dragId = null;
+function wireTabDrag(t, d) {
+  t.addEventListener("dragstart", (e) => {
+    dragId = d.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-markora-tab", d.id);
+    requestAnimationFrame(() => t.classList.add("dragging"));
+  });
+  t.addEventListener("dragend", () => { dragId = null; clearDropMarks(); renderTabs(); });
+  t.addEventListener("dragover", (e) => {
+    if (!dragId || dragId === d.id) return;
+    const from = docs.find((x) => x.id === dragId);
+    if (!!from.pinned !== !!d.pinned) return; // can't mix pinned / unpinned zones
+    e.preventDefault();
+    e.stopPropagation();
+    const r = t.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    clearDropMarks();
+    t.classList.add(after ? "drop-after" : "drop-before");
+  });
+  t.addEventListener("drop", (e) => {
+    if (!dragId || dragId === d.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const after = t.classList.contains("drop-after");
+    const from = docs.findIndex((x) => x.id === dragId);
+    const [moved] = docs.splice(from, 1);
+    let to = docs.findIndex((x) => x.id === d.id) + (after ? 1 : 0);
+    docs.splice(to, 0, moved);
+    clearDropMarks();
+    renderTabs();
+    saveSession();
+  });
+}
+function clearDropMarks() { els.tabs.querySelectorAll(".drop-before, .drop-after, .dragging").forEach((x) => x.classList.remove("drop-before", "drop-after", "dragging")); }
+
+/** Move a tab left/right with the keyboard, staying inside its pinned/unpinned zone */
+function moveTab(id, dir) {
+  const i = docs.findIndex((x) => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= docs.length || !!docs[j].pinned !== !!docs[i].pinned) return;
+  [docs[i], docs[j]] = [docs[j], docs[i]];
+  renderTabs();
+  saveSession();
+}
+
+/* ---------- Pin / unpin ---------- */
+function togglePin(id) {
+  const d = docs.find((x) => x.id === id);
+  if (!d) return;
+  d.pinned = !d.pinned;
+  docs.splice(docs.indexOf(d), 1);
+  const firstUnpinned = docs.findIndex((x) => !x.pinned);
+  // pinning → end of the pinned group; unpinning → start of the unpinned group
+  docs.splice(firstUnpinned < 0 ? docs.length : firstUnpinned, 0, d);
+  persist(d);
+  renderTabs();
+  saveSession();
+}
+
+/* ---------- Right-click menu on tabs ---------- */
+const tabMenu = Object.assign(document.createElement("div"), { className: "tab-menu hidden", role: "menu" });
+document.body.appendChild(tabMenu);
+function openTabMenu(id, x, y) {
+  const d = docs.find((t) => t.id === id);
+  if (!d) return;
+  const i = docs.indexOf(d);
+  const items = [
+    [d.pinned ? "Unpin tab" : "Pin tab", () => togglePin(id)],
+    ["Rename", () => startTabRename(id), "F2"],
+    ["Move left", () => moveTab(id, -1), "Ctrl+Shift+PgUp", i === 0 || !!docs[i - 1].pinned !== !!d.pinned],
+    ["Move right", () => moveTab(id, 1), "Ctrl+Shift+PgDn", i === docs.length - 1 || !!docs[i + 1].pinned !== !!d.pinned],
+    null,
+    ["Close", () => closeDoc(id), "Alt+W"],
+    ["Close other tabs", () => docs.filter((t) => t.id !== id && !t.pinned).forEach((t) => closeDoc(t.id)), "", docs.every((t) => t.id === id || t.pinned)],
+  ];
+  tabMenu.innerHTML = "";
+  for (const it of items) {
+    if (!it) { tabMenu.appendChild(Object.assign(document.createElement("div"), { className: "sep" })); continue; }
+    const [label, fn, key = "", disabled = false] = it;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.disabled = disabled;
+    b.innerHTML = `<span></span><kbd>${key}</kbd>`;
+    b.firstChild.textContent = label;
+    b.addEventListener("click", () => { closeTabMenu(); fn(); });
+    tabMenu.appendChild(b);
+  }
+  tabMenu.classList.remove("hidden");
+  const r = tabMenu.getBoundingClientRect();
+  tabMenu.style.left = Math.min(x, innerWidth - r.width - 8) + "px";
+  tabMenu.style.top = Math.min(y, innerHeight - r.height - 8) + "px";
+}
+function closeTabMenu() { tabMenu.classList.add("hidden"); }
+document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".tab-menu")) closeTabMenu(); });
+addEventListener("blur", closeTabMenu);
+addEventListener("resize", closeTabMenu);
+
 let tabEditing = false;
 function renderTabs() {
   if (tabEditing) return;
   els.tabs.innerHTML = "";
   for (const d of docs) {
     const t = document.createElement("div");
-    t.className = "tab" + (d.id === activeId ? " active" : "") + (d.dirty ? " dirty" : "");
+    t.className = "tab" + (d.id === activeId ? " active" : "") + (d.dirty ? " dirty" : "") + (d.pinned ? " pinned" : "");
+    t.draggable = true;
+    t.dataset.id = d.id;
     const live = d.kind === "file" && d.handle && !d.needsPermission;
     t.title = (d.kind === "note" ? `${d.name} — note saved in browser` : live ? `${d.name} — live reload on` : d.name) + "\nDouble-click to rename (F2)";
-    t.innerHTML = `${live ? '<span class="live"></span>' : d.kind === "note" ? '<span class="note-dot"></span>' : ""}<span class="name"></span><button class="x" title="Close (Alt+W)" aria-label="Close">×</button>`;
+    const dot = live ? '<span class="live"></span>' : d.kind === "note" ? '<span class="note-dot"></span>' : "";
+    t.innerHTML = d.pinned
+      ? `<span class="pin" title="Pinned">${PIN_ICON}</span><span class="name"></span>${dot}`
+      : `${dot}<span class="name"></span><button class="x" title="Close (Alt+W)" aria-label="Close">×</button>`;
     t.querySelector(".name").textContent = displayName(d.name);
     t.addEventListener("click", (e) => { if (!e.target.closest(".x")) activate(d.id); });
     t.addEventListener("auxclick", (e) => { if (e.button === 1) closeDoc(d.id); });
     t.addEventListener("dblclick", (e) => { if (!e.target.closest(".x")) startTabRename(d.id); });
-    t.querySelector(".x").addEventListener("click", () => closeDoc(d.id));
+    t.querySelector(".x")?.addEventListener("click", () => closeDoc(d.id));
+    t.addEventListener("contextmenu", (e) => { e.preventDefault(); openTabMenu(d.id, e.clientX, e.clientY); });
+    wireTabDrag(t, d);
     els.tabs.appendChild(t);
     if (d.id === activeId) t.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
@@ -785,6 +895,8 @@ addEventListener("keydown", (e) => {
   else if (e.altKey && k === "n") { e.preventDefault(); newNote(); }
   else if (e.altKey && k === "w" && activeId != null) { e.preventDefault(); closeDoc(activeId); }
   else if (e.key === "Escape" && !els.library.classList.contains("hidden")) toggleLibrary(false);
+  else if (mod && e.shiftKey && (e.key === "PageUp" || e.key === "PageDown") && activeId != null) { e.preventDefault(); moveTab(activeId, e.key === "PageUp" ? -1 : 1); }
+  else if (e.key === "Escape" && !tabMenu.classList.contains("hidden")) closeTabMenu();
   else if (e.ctrlKey && e.key === "Tab" && docs.length > 1) {
     e.preventDefault();
     const i = docs.findIndex((d) => d.id === activeId);
@@ -795,15 +907,6 @@ addEventListener("keydown", (e) => {
 /* ============================================================
    Install & offline
    ============================================================ */
-let installEvt = null;
-addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; els.installBtn.classList.remove("hidden"); });
-els.installBtn.addEventListener("click", async () => {
-  if (!installEvt) return;
-  installEvt.prompt();
-  await installEvt.userChoice;
-  installEvt = null;
-  els.installBtn.classList.add("hidden");
-});
 addEventListener("appinstalled", () => toast("Installed — Markora is now in “Open with”"));
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(console.error);
 
