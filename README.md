@@ -1,65 +1,210 @@
+<div align="center">
+
+<img src="public/icons/icon.svg" alt="Markora icon" width="96" />
+
 # Markora
 
-A Markdown reader that renders `.md` files like a modern AI chat. Pick **Claude style** (serif, warm paper, clay accent) or **ChatGPT style** (sans-serif, clean white or graphite), in light, dark, or system mode.
+![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E.svg?logo=javascript&logoColor=black)
+![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8.svg?logo=pwa&logoColor=white)
+![Offline](https://img.shields.io/badge/works-offline-2ea44f.svg)
+![esbuild](https://img.shields.io/badge/esbuild-bundled-FFCF00.svg?logo=esbuild&logoColor=black)
+![KaTeX](https://img.shields.io/badge/KaTeX-math-329894.svg)
+![Mermaid](https://img.shields.io/badge/Mermaid-diagrams-FF3670.svg?logo=mermaid&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-deployed-000000.svg?logo=vercel&logoColor=white)
+
+*Read and write Markdown the way AI chats render it. Install it once, right-click any `.md` file → **Open with → Markora**, and it opens in a clean Claude-style or ChatGPT-style reader with a live editor beside it.*
+
+[**Live app**](https://markora.vercel.app) •
+[**Features**](#features) •
+[**How "Open with" works**](#how-open-with-works) •
+[**Architecture**](#architecture) •
+[**Running it locally**](#running-it-locally) •
+[**Deployment**](#deployment)
+
+<br />
+
+<!-- Add a screenshot or GIF here — it's the single biggest upgrade a README can get:
+<img src="docs/screenshot.png" alt="Markora showing a document in Claude style" width="860" />
+-->
+
+</div>
+
+---
+
+## Why
+
+Most Markdown previews look like a 2009 wiki page. The best-looking Markdown most people see every day is inside AI chat apps, so Markora borrows that reading experience and makes it a proper desktop app for your own files. It has no backend and no account. Your files never leave your machine.
 
 ## Features
 
-- **Open with → Markora**: right-click any `.md` file in Explorer once the app is installed
-- **Live reload**: files opened via *Open with*, the picker, or drag-and-drop re-render when they change on disk (green dot on the tab)
-- **Rendering**: GFM tables, task lists, syntax-highlighted code with Copy, KaTeX math (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) and Mermaid diagrams
-- **Editor with live preview**: press `Ctrl+E` (or the pencil) for a side-by-side editor. The preview updates as you type, the editor scroll-syncs, the divider drags (double-click to reset), and the pane collapses. It has a small toolbar, list auto-continue, and `Tab` indent
-- **Edit in the preview**: double-click any paragraph, list or heading to edit its Markdown in place. Press `Esc` (or `Ctrl+Enter`), click away, or pause for 4 seconds to finish. Task-list checkboxes are clickable and update the file
-- **Saving**: notes autosave in the browser. For files opened from disk, `Ctrl+S` writes back to the file and `Ctrl+Shift+S` saves as. A note's **Save as…** turns it into a real `.md` file
-- **Library** (`Ctrl+Shift+L`): up to 50 notes and recent files, stored in IndexedDB. Open tabs come back when you restart, unsaved edits to disk files are kept as drafts, and you get search and delete
-- **Tabs**: multiple files open at once, with a sticky outline of headings. Drag tabs to reorder (or `Ctrl+Shift+PgUp/PgDn`). Right-click a tab to pin, rename or close it. Double-click or `F2` renames, and renaming a disk file renames it on disk
-- **Offline**: everything, including fonts, is bundled, so it works with no internet once installed
-- **Other ways to open**: drag-and-drop or paste Markdown text
-- **Shortcuts**: `Ctrl+O` open, `Alt+N` new note, `Ctrl+E` editor, `Ctrl+S` save, `Ctrl+Shift+L` library, `Ctrl+\` outline, `Alt+W` close tab, `Ctrl+Tab` switch tab, `Ctrl+P` print
-- **Editor shortcuts**: `Ctrl+B` bold, `Ctrl+I` italic, `Ctrl+K` link, `Ctrl+H` heading, ``Ctrl+` `` code
+<table>
+<tr>
+<td width="50%" valign="top">
 
-## Use it
+### Reading
+- **Two styles**: *Claude* (serif, warm paper, clay accent) or *ChatGPT* (sans-serif, clean white or graphite)
+- **Themes**: light, dark, or follow the system
+- **Rendering**: GFM tables, task lists and reference-style links
+- **Code**: syntax highlighting with one-click **Copy**
+- **Math**: KaTeX for `$…$`, `$$…$$`, `\(…\)` and `\[…\]`
+- **Diagrams**: Mermaid, lazy-loaded only when a document uses them
+- **Navigation**: a sticky outline of headings, plus reading time and word count
+- **Typography**: smart quotes, and frontmatter shown collapsed
 
-Open the deployed site in **Edge or Chrome** and click the install icon in the address bar. After that it runs as its own app, works offline, and updates itself whenever a new version is deployed.
+</td>
+<td width="50%" valign="top">
 
-### Make it your default .md viewer (Windows)
+### Writing
+- **Side-by-side editor** with live preview, scroll sync and a resizable split
+- **Edit in the preview**: double-click any block to edit its Markdown in place
+- **Clickable checkboxes** that write `[x]` back to the file
+- **Toolbar & shortcuts**: bold, links, lists, tables, code blocks
+- **List auto-continue**, `Tab` indent / outdent
+- **Saving**: `Ctrl+S` writes straight back to the file on disk
+- **Notes**: autosave in the browser and turn into real files with *Save as…*
 
-1. Install Markora as described above.
-2. Right-click any `.md` file and choose **Open with → Choose another app → Markora**.
-3. Tick **Always use this app**. The first time, the browser asks permission for Markora to open files. Allow it.
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-## Deploy (Vercel)
+### Files & tabs
+- **Open with → Markora** from Windows Explorer
+- **Live reload** when the file changes on disk
+- **Tabs**: drag to reorder, pin, rename (renames on disk too)
+- **Other ways in**: drag & drop files, or paste Markdown to start a note
 
-The repo is ready for Vercel. `vercel.json` sets the build (`npm run build` into `dist/`) and the cache headers the service worker needs.
+</td>
+<td valign="top">
 
-1. Push this repo to GitHub.
-2. On [vercel.com/new](https://vercel.com/new), import the repo and keep the defaults. Settings come from `vercel.json`.
-3. Every push to `main` redeploys automatically.
+### App
+- **Installable PWA** that runs in its own window
+- **Fully offline**: fonts, libraries and all assets are bundled
+- **Library** of up to 50 notes and recent files, restored on restart
+- **Self-updating**: every deploy reaches installed apps automatically
 
-## Run locally
+</td>
+</tr>
+</table>
+
+## How "Open with" works
+
+Markora never touches the registry itself. It *declares* what it can open, and the browser does the OS integration when you install it.
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant W as Windows Explorer
+    participant B as Edge / Chrome
+    participant M as Markora (PWA)
+    U->>B: Install Markora
+    B->>W: Register app + .md file handler (per-user)
+    U->>W: Right-click notes.md → Open with → Markora
+    W->>B: Launch app with file path
+    B->>M: launchQueue → FileSystemFileHandle
+    M->>M: Render, watch for changes, save back on Ctrl+S
+```
+
+The two pieces of code that make it happen:
+
+```jsonc
+// public/manifest.webmanifest
+"file_handlers": [{ "action": "./", "accept": { "text/markdown": [".md", ".markdown", ".mdx"] } }],
+"launch_handler": { "client_mode": ["focus-existing", "auto"] }   // reuse the window → new tab
+```
+
+```js
+// src/main.js
+launchQueue.setConsumer(async ({ files }) => {
+  for (const handle of files) await openHandle(handle);   // a handle, not a copy → live reload + save
+});
+```
+
+## Architecture
+
+```
+src/
+├── main.js      App shell: tabs, editor pane, library, saving, live reload, launchQueue
+├── render.js    Markdown → HTML: marked + highlight.js + KaTeX + Mermaid, sanitized by DOMPurify
+├── editor.js    The textarea editor: toolbar actions, list continuation, indent
+├── db.js        IndexedDB storage for notes and file handles (library cap: 50)
+├── styles.css   Both reading styles as design tokens, light & dark
+└── sample.md    The built-in sample document
+public/
+├── manifest.webmanifest   PWA manifest with file_handlers
+├── sw.js                  Service worker: versioned, cache-first offline shell
+└── icons/
+build.mjs        esbuild bundle → dist/, Mermaid code-split, service worker precache list
+vercel.json      Build settings + cache headers
+```
+
+### Design decisions
+
+| Decision | Why |
+| --- | --- |
+| **PWA over Electron / Tauri** | It gets OS file association through the File Handling API with no installer, ships as a few MB instead of around 100, and updates on every deploy. |
+| **IndexedDB, not localStorage** | It's async with a much larger quota, and it can store `FileSystemFileHandle`s, so files reopen after a restart. |
+| **Handles, not file copies** | Re-reading the handle gives live reload, and `createWritable()` saves in place. |
+| **Block-level source mapping** | Each top-level block is rendered with its source offsets, which is what makes double-click editing and clickable checkboxes exact. |
+| **Mermaid lazy-loaded** | The largest dependency is fetched only when a document contains a diagram. |
+| **No framework** | Vanilla JS and one esbuild step keep the whole app small and fast to load. |
+| **DOMPurify on all output** | Markdown can contain raw HTML, and the app treats every file as untrusted. |
+
+## Keyboard shortcuts
+
+<details>
+<summary><b>Show all shortcuts</b></summary>
+
+| Action | Shortcut |
+| --- | --- |
+| New note | `Alt+N` |
+| Open file | `Ctrl+O` |
+| Toggle editor | `Ctrl+E` |
+| Save / Save as | `Ctrl+S` / `Ctrl+Shift+S` |
+| Library | `Ctrl+Shift+L` |
+| Outline | `Ctrl+\` |
+| Rename tab | `F2` or double-click |
+| Move tab | `Ctrl+Shift+PgUp` / `PgDn` |
+| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Close tab | `Alt+W` |
+| Finish editing in preview | `Esc` |
+| Bold · Italic · Link · Heading · Code | `Ctrl+B` · `Ctrl+I` · `Ctrl+K` · `Ctrl+H` · ``Ctrl+` `` |
+
+</details>
+
+## Running it locally
 
 ```bash
 npm install
-npm start          # builds and serves on http://localhost:4173
+npm start        # builds and serves on http://localhost:4173
 ```
 
-Without Node, run `npm run build` once somewhere, then `python serve.py` serves `dist/`.
+Then open it in **Edge or Chrome** and install it from the address bar. After editing source files, run `npm run build` and reload. The service worker picks up the new version.
 
-## Develop
+> No Node? `python serve.py` serves an existing `dist/` build.
 
-```
-src/main.js      app logic (tabs, editor pane, library, saving, live reload, launchQueue)
-src/render.js    Markdown → HTML (marked, highlight.js, KaTeX, Mermaid, DOMPurify)
-src/editor.js    the textarea editor (toolbar actions, list continuation, indent)
-src/db.js        IndexedDB storage (library cap: MAX_ITEMS = 50)
-src/styles.css   both themes; tokens at the top
-src/sample.md    the built-in sample document
-public/          index.html, manifest (file_handlers), service worker, icons
-build.mjs        esbuild bundle into dist/
-```
+## Deployment
 
-Run `npm run build` after editing, then reload the page. The service worker picks up the new version.
+Markora is a static site, so any static host works. It's set up for **Vercel**:
 
-## Notes
+1. Push the repo to GitHub.
+2. Import it at [vercel.com/new](https://vercel.com/new) and keep the defaults. `vercel.json` sets `npm run build` and `dist/` plus the service-worker cache headers.
+3. Every push to `main` redeploys, and installed apps update on their next launch.
 
-- *Open with* requires a Chromium browser (Edge or Chrome). Firefox and Safari can still use the app in a tab.
-- Images referenced with relative paths (`![](./img.png)`) won't load, because a web app only gets access to the file you opened, not its folder.
+### Make it your default `.md` viewer (Windows)
+
+1. Install Markora from the deployed URL.
+2. Right-click any `.md` → **Open with → Choose another app → Markora**, and tick **Always use this app**.
+3. Allow the one-time permission prompt the first time a file opens.
+
+## Browser support
+
+| | Reading & editing | Open with / save to disk |
+| --- | :---: | :---: |
+| Edge, Chrome (desktop) | ✅ | ✅ |
+| Firefox, Safari | ✅ | ❌ (File Handling API is Chromium-only) |
+
+<div align="center">
+<br />
+<sub>Built with marked, highlight.js, KaTeX, Mermaid and DOMPurify.</sub>
+</div>
