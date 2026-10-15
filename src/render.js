@@ -85,8 +85,23 @@ function normalizeMath(src) {
 
 export function renderMarkdown(src) {
   slugs = new Map();
-  const { fm, body } = splitFrontmatter(src.replace(/^﻿/, ""));
-  let html = md.parse(normalizeMath(body));
+  const clean = src.replace(/^\uFEFF/, "");
+  const { fm, body } = splitFrontmatter(clean);
+  const base = src.length - body.length; // offset of body inside the original text
+  // Render each top-level block separately and tag it with its source range,
+  // so the preview can map a double-click / checkbox back to the Markdown.
+  const tokens = md.lexer(body);
+  // reference-style link definitions are document-wide; give every block a copy
+  const linkDefs = Object.entries(tokens.links || {}).map(([k, v]) => `\n\n[${k}]: <${v.href}>${v.title ? ` "${v.title.replace(/"/g, "")}"` : ""}`).join("");
+  let html = "", pos = 0;
+  for (const t of tokens) {
+    const start = pos;
+    pos += t.raw.length;
+    if (t.type === "space") continue;
+    const raw = t.raw.replace(/\n+$/, "");
+    const sub = md.lexer(normalizeMath(raw) + linkDefs);
+    html += `<div class="blk" data-a="${base + start}" data-len="${raw.length}">${md.parser(sub)}</div>`;
+  }
   if (fm) html = `<details class="frontmatter"><summary>Frontmatter</summary><pre>${esc(fm)}</pre></details>` + html;
   return DOMPurify.sanitize(html, { ADD_ATTR: ["target"], ADD_TAGS: ["semantics", "annotation"] });
 }

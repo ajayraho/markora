@@ -333,7 +333,7 @@ main:has(> .empty:not(.hidden)) { padding: 0; }
 .codeblock pre { font-size: var(--code-size); line-height: 1.6; }
 .codeblock code { font-size: inherit; line-height: inherit; }
 .md blockquote > :last-child, .md li > p:last-child { margin-bottom: 0; }
-.md li input[type="checkbox"] { pointer-events: none; }
+.md li input[type="checkbox"] { cursor: pointer; }
 
 /* ============================================================
    Editor pane + live preview split
@@ -480,3 +480,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .tab-menu button:disabled { color: var(--muted); opacity: .55; cursor: default; }
 .tab-menu kbd { border: 0; background: none; padding: 0; color: var(--muted); font-size: 11px; }
 .tab-menu .sep { height: 1px; margin: 4px 6px; background: var(--border); }
+
+/* Edit-in-preview */
+.md > .blk:first-child > :first-child { margin-top: 0; }
+.md .blk.editing { margin: 0 0 1em; }
+.inline-edit { display: block; width: 100%; min-height: 3em; padding: 10px 12px; margin: 0; resize: none; overflow: hidden; border: 1px solid var(--accent); border-radius: 10px; background: var(--editor-bg); color: var(--fg); font: 13.5px/1.7 var(--mono); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.inline-hint { margin-top: 6px; font: 11.5px var(--ui-font); color: var(--muted); text-align: right; }

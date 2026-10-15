@@ -40,6 +40,7 @@ function toast(msg, ms = 1900) {
    - file: a file on disk; edits are kept as a draft until you Save (Ctrl+S)
    ============================================================ */
 const docs = [];
+let inlineEdit = null; // active edit-in-preview session
 let activeId = null;
 const active = () => docs.find((d) => d.id === activeId);
 
@@ -284,7 +285,7 @@ async function reconnect(d) {
 let polling = false;
 setInterval(async () => {
   const d = active();
-  if (polling || document.hidden || !d?.handle || d.dirty || d.needsPermission) return;
+  if (polling || inlineEdit || document.hidden || !d?.handle || d.dirty || d.needsPermission) return;
   polling = true;
   if (await refreshFromDisk(d)) { syncEditorFromDoc({ keepCursor: true }); renderPreview(true); toast("Reloaded from disk", 1200); }
   polling = false;
@@ -597,6 +598,7 @@ function renderMeta() {
 }
 
 async function renderPreview(keepScroll = false) {
+  if (inlineEdit) return;
   const d = active();
   const hasDoc = !!d;
   els.empty.classList.toggle("hidden", hasDoc);
@@ -612,7 +614,7 @@ async function renderPreview(keepScroll = false) {
   els.md.querySelectorAll("a[href]").forEach((a) => {
     if (/^https?:|^mailto:/i.test(a.getAttribute("href"))) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
   });
-  els.md.querySelectorAll('input[type="checkbox"][disabled]').forEach((c) => { c.disabled = false; c.tabIndex = -1; });
+  els.md.querySelectorAll('input[type="checkbox"][disabled]').forEach((c) => { c.disabled = false; });
   const mermaidDone = renderMermaid(els.md); // cached diagrams fill synchronously → no jump while typing
   buildOutline();
   scrollTo(0, y);
@@ -621,6 +623,71 @@ async function renderPreview(keepScroll = false) {
 }
 
 // Copy buttons
+/* ============================================================
+   Edit in the preview: double-click a block, tick checkboxes
+   ============================================================ */
+/** Replace a range of the active doc's text and refresh everything */
+function applyEdit(a, len, replacement) {
+  const d = active();
+  if (!d) return;
+  d.text = d.text.slice(0, a) + replacement + d.text.slice(a + len);
+  if (d.kind === "file") d.dirty = true;
+  persist(d);
+  renderTabs();
+  syncEditorFromDoc({ keepCursor: true });
+  renderPreview(true);
+}
+
+// Checkboxes: toggle the n-th task marker inside the block's source
+els.md.addEventListener("change", (e) => {
+  const box = e.target.closest('input[type="checkbox"]');
+  const blk = box?.closest(".blk");
+  if (!blk || inlineEdit) return;
+  const d = active();
+  const a = +blk.dataset.a, len = +blk.dataset.len;
+  const n = [...blk.querySelectorAll('input[type="checkbox"]')].indexOf(box);
+  let i = -1;
+  const src = d.text.slice(a, a + len).replace(/^(\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+)\[([ xX])\]/gm, (m, pre, mark) =>
+    ++i === n ? `${pre}[${mark === " " ? "x" : " "}]` : m);
+  applyEdit(a, len, src);
+});
+
+// Double-click a block → edit its Markdown in place. Leaves on Esc (or Ctrl+Enter),
+// clicking elsewhere, or after a few idle seconds. Changes are always kept.
+const IDLE_MS = 4000;
+els.md.addEventListener("dblclick", (e) => {
+  if (inlineEdit || e.target.closest("a, button, input, textarea, .copy")) return;
+  const blk = e.target.closest(".blk");
+  if (!blk) return;
+  window.getSelection()?.removeAllRanges();
+  const d = active();
+  const a = +blk.dataset.a, len = +blk.dataset.len;
+  const ta = Object.assign(document.createElement("textarea"), { className: "inline-edit", value: d.text.slice(a, a + len), spellcheck: true });
+  blk.replaceChildren(ta, Object.assign(document.createElement("div"), { className: "inline-hint", textContent: "Esc to finish" }));
+  blk.classList.add("editing");
+  const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
+  fit();
+  ta.focus();
+  let timer;
+  const finish = (save = true) => {
+    if (!inlineEdit) return;
+    clearTimeout(timer);
+    inlineEdit = null;
+    if (save && ta.value !== d.text.slice(a, a + len)) applyEdit(a, len, ta.value);
+    else renderPreview(true);
+  };
+  const bump = () => { clearTimeout(timer); timer = setTimeout(() => finish(true), IDLE_MS); };
+  inlineEdit = { finish };
+  ta.addEventListener("input", () => { fit(); bump(); });
+  ta.addEventListener("keydown", (ev) => {
+    bump();
+    if (ev.key === "Escape" || (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey))) { ev.preventDefault(); ev.stopPropagation(); finish(true); }
+  });
+  ta.addEventListener("pointerdown", bump);
+  ta.addEventListener("blur", () => setTimeout(() => finish(true), 0));
+  bump();
+});
+
 els.md.addEventListener("click", async (e) => {
   const btn = e.target.closest(".copy");
   if (!btn) return;
