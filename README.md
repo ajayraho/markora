@@ -8,6 +8,7 @@ A Markdown reader that renders `.md` files like a modern AI chat. Pick **Claude 
 - **Live reload**: files opened via *Open with*, the picker, or drag-and-drop re-render when they change on disk (green dot on the tab)
 - **Rendering**: GFM tables, task lists, syntax-highlighted code with Copy, KaTeX math (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) and Mermaid diagrams
 - **Editor with live preview**: press `Ctrl+E` (or the pencil) for a side-by-side editor. The preview updates as you type, the editor scroll-syncs, the divider drags (double-click to reset), and the pane collapses. It has a small toolbar, list auto-continue, and `Tab` indent
+- **Edit in the preview**: double-click any paragraph, list or heading to edit its Markdown in place. Press `Esc` (or `Ctrl+Enter`), click away, or pause for 4 seconds to finish. Task-list checkboxes are clickable and update the file
 - **Saving**: notes autosave in the browser. For files opened from disk, `Ctrl+S` writes back to the file and `Ctrl+Shift+S` saves as. A note's **Save as…** turns it into a real `.md` file
 - **Library** (`Ctrl+Shift+L`): up to 50 notes and recent files, stored in IndexedDB. Open tabs come back when you restart, unsaved edits to disk files are kept as drafts, and you get search and delete
 - **Tabs**: multiple files open at once, with a sticky outline of headings. Drag tabs to reorder (or `Ctrl+Shift+PgUp/PgDn`). Right-click a tab to pin, rename or close it. Double-click or `F2` renames, and renaming a disk file renames it on disk
