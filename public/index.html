@@ -29,6 +29,7 @@
     </div>
     <nav class="tabs" id="tabs" aria-label="Open files"></nav>
     <div class="actions">
+      <button class="btn icon" id="syncBtn" title="Sync with Google Drive"></button>
       <button class="btn icon" id="libraryBtn" title="Library: saved notes &amp; recent files (Ctrl+Shift+L)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H18v-5"/><path d="M8 7h6"/></svg>
       </button>
@@ -94,8 +95,9 @@
     </div>
     <input class="lib-search" id="libSearch" placeholder="Search…" spellcheck="false">
     <div class="lib-list" id="libList"></div>
-    <div class="lib-foot">Notes are saved in this browser. Files opened from disk are remembered so you can reopen them.</div>
+    <div class="lib-foot">Notes are saved in this browser, and in your Google Drive if sync is on. Files opened from disk are remembered so you can reopen them.</div>
   </div>
+  <div class="library sync-pop hidden" id="syncPop" role="dialog" aria-label="Sync"></div>
   <div class="dropzone hidden" id="dropzone"><div>Drop to open</div></div>
   <div class="toast" id="toast"></div>
   <input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdx,.txt,text/markdown" multiple hidden>

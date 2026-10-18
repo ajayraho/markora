@@ -1,6 +1,7 @@
 import { renderMarkdown, renderMermaid, esc, COPY_ICON, CHECK_ICON } from "./render.js";
 import { db, MAX_ITEMS, MAX_TEXT, requestPersistence } from "./db.js";
 import { setupEditor, ACTIONS } from "./editor.js";
+import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect } from "./sync.js";
 import SAMPLE from "./sample.md";
 
 /* ============================================================
@@ -81,7 +82,9 @@ function persist(d, { now = false } = {}) {
         return;
       }
       if (d.discarded) return;
-      await db.put(record(d));
+      const prev = await db.get(d.id).catch(() => null); // keep sync bookkeeping fields
+      await db.put({ ...(prev || {}), ...record(d) });
+      if (d.kind === "note") syncSoon();
     } catch (e) { console.error("persist failed", e); }
     if (d.id === activeId) updateEditorChrome();
   };
@@ -359,7 +362,7 @@ function closeDoc(id, { force = false } = {}) {
     // Closing an empty note discards it, so the library doesn't fill up with blank "Untitled N"s
     d.discarded = true;
     clearTimeout(pending.get(d.id)); pending.delete(d.id);
-    db.del(d.id).catch(() => {});
+    db.del(d.id).then(() => syncSoon(), () => {});
   } else if (pending.has(d.id)) persist(d, { now: true });
   if (!force && d.transient && d.text.trim() && !confirm(`"${displayName(d.name)}" isn't saved (library full). Close anyway?`)) return;
   docs.splice(i, 1);
@@ -874,6 +877,7 @@ async function renderLibrary() {
       const open = docs.find((d) => d.id === r.id);
       if (open) { open.transient = true; clearTimeout(pending.get(open.id)); pending.delete(open.id); closeDoc(open.id, { force: true }); }
       await db.del(r.id);
+      syncSoon(500);
       renderLibrary();
     });
     els.libList.appendChild(row);
@@ -895,6 +899,7 @@ async function openFromLibrary(r) {
 
 function toggleLibrary(on = els.library.classList.contains("hidden")) {
   els.library.classList.toggle("hidden", !on);
+  if (on) toggleSyncPop(false);
   $("libraryBtn").setAttribute("aria-pressed", String(on));
   if (on) { els.libSearch.value = ""; renderLibrary(); setTimeout(() => els.libSearch.focus(), 0); }
 }
@@ -948,6 +953,79 @@ function toggleOutline(on = !outlineOn) {
 $("outlineBtn").addEventListener("click", () => toggleOutline());
 
 /* ============================================================
+   Google Drive sync UI
+   ============================================================ */
+const CLOUD = {
+  off: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 0 1 2.3 8.4"/><path d="m3 3 18 18"/></svg>`,
+  idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></svg>`,
+  syncing: `<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>`,
+  error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/><path d="M12 10v3M12 16h.01"/></svg>`,
+};
+const syncBtn = $("syncBtn"), syncPop = $("syncPop");
+
+function renderSyncUI(st = syncState()) {
+  syncBtn.innerHTML = CLOUD[st.status];
+  syncBtn.classList.toggle("warn", st.status === "error");
+  syncBtn.title = st.status === "off" ? "Sync with Google Drive" : st.status === "syncing" ? "Syncing…" : st.status === "error" ? "Sync problem: " + st.error : `Synced with Google Drive${st.email ? " (" + st.email + ")" : ""}`;
+  if (syncPop.classList.contains("hidden")) return;
+  if (st.status === "off") {
+    syncPop.innerHTML = `<div class="lib-head"><strong>Sync with Google Drive</strong></div>
+      <div class="sync-body"><p>See and edit your notes on every device. They're saved as <code>.md</code> files in a <b>Markora</b> folder in your own Google Drive. Markora can only see the files it creates there.</p>
+      <p class="muted">Files opened from this computer's disk stay on this device.</p>
+      <button class="btn primary" id="syncConnect">Connect Google Drive</button></div>`;
+    $("syncConnect").onclick = () => { flushAll(); connect(); };
+  } else {
+    const when = st.status === "syncing" ? "Syncing…" : st.status === "error" ? `Problem: ${esc(st.error || "unknown")}` : st.lastSync ? `Synced ${ago(st.lastSync)}` : "Waiting to sync";
+    syncPop.innerHTML = `<div class="lib-head"><strong>Google Drive</strong><span class="lib-count"></span></div>
+      <div class="sync-body"><p><span class="sync-dot ${st.status}"></span>${when}${navigator.onLine ? "" : " · offline"}</p>
+      <p class="muted">Notes sync to the <b>Markora</b> folder in your Drive. Files opened from disk stay on this device.</p>
+      <div class="row"><button class="btn primary" id="syncNowBtn">Sync now</button><button class="btn" id="syncOff">Disconnect</button></div></div>`;
+    syncPop.querySelector(".lib-count").textContent = st.email || "";
+    $("syncNowBtn").onclick = () => syncNow();
+    $("syncOff").onclick = async () => { await disconnect(); toast("Disconnected. Your notes stay on this device."); };
+  }
+}
+function toggleSyncPop(on = syncPop.classList.contains("hidden")) {
+  syncPop.classList.toggle("hidden", !on);
+  syncBtn.setAttribute("aria-pressed", String(on));
+  if (on) { toggleLibrary(false); renderSyncUI(); }
+}
+syncBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSyncPop(); });
+document.addEventListener("pointerdown", (e) => {
+  if (!syncPop.classList.contains("hidden") && !e.target.closest("#syncPop, #syncBtn")) toggleSyncPop(false);
+});
+onSyncChange(renderSyncUI);
+
+const conflictCopyName = (name) => `${displayName(name)} (conflicted copy ${new Date().toLocaleDateString()}).md`;
+
+/** Apply changes that the sync pulled down from Drive to open tabs */
+async function onRemoteChanges(changes) {
+  for (const c of changes) {
+    const d = docs.find((x) => x.id === c.id);
+    if (!d) continue;
+    if (c.type === "updated") {
+      const rec = await db.get(c.id);
+      if (!rec) continue;
+      const busy = pending.has(d.id) || (inlineEdit && activeId === d.id);
+      if (busy) {
+        // you're mid-edit: keep your version, save the incoming one as a separate note
+        await db.put({ ...rec, id: newId(), name: conflictCopyName(rec.name), remoteId: undefined, remoteVersion: undefined, syncedAt: undefined, updated: Date.now() });
+        toast("This note changed on another device too. Saved that version as a conflicted copy.", 4000);
+        continue;
+      }
+      d.text = rec.text ?? "";
+      d.name = rec.name;
+      if (d.id === activeId) { syncEditorFromDoc({ keepCursor: true }); renderPreview(true); }
+    } else if (c.type === "deleted" && !pending.has(d.id)) {
+      d.discarded = true;
+      closeDoc(d.id, { force: true });
+    }
+  }
+  renderTabs();
+  if (!els.library.classList.contains("hidden")) renderLibrary();
+}
+
+/* ============================================================
    Keyboard
    ============================================================ */
 addEventListener("keydown", (e) => {
@@ -981,13 +1059,20 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.ser
    Boot
    ============================================================ */
 applyTheme();
+// keep layout offsets in sync with the top bar's height (it wraps to two rows on phones)
+new ResizeObserver(([e]) => document.documentElement.style.setProperty("--bar-h", e.target.offsetHeight + "px")).observe(document.querySelector(".bar"));
 els.editBtn.setAttribute("aria-pressed", String(editorOpen));
 requestPersistence();
-const ready = restoreSession().catch(console.error).then(() => {
+const ready = restoreSession().catch(console.error).then(async () => {
   renderTabs();
   syncEditorFromDoc();
   renderPreview();
+  renderSyncUI();
+  const flag = await initSync({ onRemoteChanges });
+  if (flag === "connected") toast("Google Drive connected. Syncing your notes…", 3000);
+  else if (flag === "cancelled") toast("Google sign-in cancelled");
+  else if (flag === "error") toast("Couldn't connect Google Drive. Try again.", 3500);
 });
 
 // for debugging / tests
-window.markora = { newNote, openHandle, saveDoc, docs, db };
+window.markora = { newNote, openHandle, saveDoc, docs, db, syncNow };
