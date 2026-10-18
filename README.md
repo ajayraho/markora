@@ -18,6 +18,7 @@
 [**Features**](#features) •
 [**How "Open with" works**](#how-open-with-works) •
 [**Architecture**](#architecture) •
+[**Sync**](#google-drive-sync) •
 [**Running it locally**](#running-it-locally) •
 [**Deployment**](#deployment)
 
@@ -80,7 +81,9 @@ Most Markdown previews look like a 2009 wiki page. The best-looking Markdown mos
 ### App
 - **Installable PWA** that runs in its own window
 - **Fully offline**: fonts, libraries and all assets are bundled
-- **Library** of up to 50 notes and recent files, restored on restart
+- **Google Drive sync**: notes on every device, stored as `.md` files in *your* Drive
+- **Library** of notes and recent files, restored on restart
+- **Phone-friendly** layout. Install it on Android or iOS from the browser
 - **Self-updating**: every deploy reaches installed apps automatically
 
 </td>
@@ -127,9 +130,15 @@ src/
 ├── main.js      App shell: tabs, editor pane, library, saving, live reload, launchQueue
 ├── render.js    Markdown → HTML: marked + highlight.js + KaTeX + Mermaid, sanitized by DOMPurify
 ├── editor.js    The textarea editor: toolbar actions, list continuation, indent
-├── db.js        IndexedDB storage for notes and file handles (library cap: 50)
+├── db.js        IndexedDB storage for notes and file handles (+ sync tombstones)
+├── sync.js      Google Drive sync engine: reconcile, conflicts, deletions
 ├── styles.css   Both reading styles as design tokens, light & dark
 └── sample.md    The built-in sample document
+api/auth/        Vercel functions that only renew the Google login (no data stored)
+├── login.js     → Google consent screen
+├── callback.js  → swaps the code for a refresh token, sealed in an httpOnly cookie
+├── token.js     → hands the browser a 1-hour access token
+└── logout.js    → revokes access, clears the cookie
 public/
 ├── manifest.webmanifest   PWA manifest with file_handlers
 ├── sw.js                  Service worker: versioned, cache-first offline shell
@@ -147,8 +156,45 @@ vercel.json      Build settings + cache headers
 | **Handles, not file copies** | Re-reading the handle gives live reload, and `createWritable()` saves in place. |
 | **Block-level source mapping** | Each top-level block is rendered with its source offsets, which is what makes double-click editing and clickable checkboxes exact. |
 | **Mermaid lazy-loaded** | The largest dependency is fetched only when a document contains a diagram. |
+| **Sync to the user's own Drive** | There's no database to run or secure, and the user owns their data. The browser talks to Google directly. |
+| **`drive.file` scope** | Markora can only see files it created, never the rest of your Drive. |
+| **Refresh token in an encrypted httpOnly cookie** | Browser-only Google logins expire hourly. A stateless function renews them, and page scripts can never read the token. |
 | **No framework** | Vanilla JS and one esbuild step keep the whole app small and fast to load. |
 | **DOMPurify on all output** | Markdown can contain raw HTML, and the app treats every file as untrusted. |
+
+## Google Drive sync
+
+Notes sync to a **Markora** folder in your Google Drive as plain `.md` files you can open anywhere. Files opened from your computer's disk stay on that device.
+
+**How it behaves**
+
+- **When it syncs:** a few seconds after you stop typing, every minute while the app is open, and when you come back online.
+- **Offline:** every device keeps its own copy, so the app works offline.
+- **Edits on two devices before syncing:** the newest save wins, and the other version is kept as a *conflicted copy*. Nothing is silently lost.
+- **Deletions:** deleting a note on one device moves it to Drive's trash and removes it from your other devices.
+
+### One-time setup (about 10 minutes)
+
+1. **Google Cloud project.** Create one at [console.cloud.google.com](https://console.cloud.google.com), then **APIs & Services → Library → Google Drive API → Enable**.
+2. **OAuth consent screen** (Google Auth Platform):
+   - **Branding:** app name *Markora* and your email.
+   - **Audience:** External, then **Publish app** so it's *In production*. Leaving it in *Testing* makes logins expire every 7 days.
+   - **Data access:** add the scopes `openid`, `email` and `.../auth/drive.file`.
+3. **Clients → Create client → Web application**, with these authorized redirect URIs:
+   - `https://<your-app>.vercel.app/api/auth/callback`
+   - `http://localhost:3000/api/auth/callback` (only for `vercel dev`)
+4. **Environment variables** in Vercel (Project → Settings → Environment Variables), then redeploy:
+
+   | Name | Value |
+   | --- | --- |
+   | `GOOGLE_CLIENT_ID` | from step 3 |
+   | `GOOGLE_CLIENT_SECRET` | from step 3 |
+   | `SESSION_SECRET` | any random string of 32+ characters, e.g. the output of `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
+   | `APP_URL` *(optional)* | your public URL, if you use a custom domain |
+
+5. **Connect.** Open Markora, click the ☁️ button and choose **Connect Google Drive**. Do this once per device.
+
+> If Google shows *"Google hasn't verified this app"*, click **Advanced → Go to Markora**. That's expected for a personal project.
 
 ## Keyboard shortcuts
 
@@ -182,6 +228,8 @@ npm start        # builds and serves on http://localhost:4173
 Then open it in **Edge or Chrome** and install it from the address bar. After editing source files, run `npm run build` and reload. The service worker picks up the new version.
 
 > No Node? `python serve.py` serves an existing `dist/` build.
+>
+> Google Drive sync needs the `/api` functions. To run them locally, use `npx vercel dev` with a `.env` file (see `.env.example`).
 
 ## Deployment
 
@@ -202,7 +250,8 @@ Markora is a static site, so any static host works. It's set up for **Vercel**:
 | | Reading & editing | Open with / save to disk |
 | --- | :---: | :---: |
 | Edge, Chrome (desktop) | ✅ | ✅ |
-| Firefox, Safari | ✅ | ❌ (File Handling API is Chromium-only) |
+| Firefox, Safari (desktop) | ✅ | ❌ (File Handling API is Chromium-only) |
+| Android, iOS | ✅ (plus Drive sync) | ❌ |
 
 <div align="center">
 <br />
