@@ -4,7 +4,7 @@
 
 const DB_NAME = "markora";
 const VERSION = 1;
-export const MAX_ITEMS = 50;              // library cap (notes + recent files)
+export const MAX_ITEMS = 200;             // library cap (notes + recent files)
 export const MAX_TEXT = 2 * 1024 * 1024;  // don't cache texts larger than ~2 MB
 
 let dbp;
@@ -36,7 +36,17 @@ export const db = {
   all: () => tx("docs", "readonly", (s) => s.getAll()),
   get: (id) => tx("docs", "readonly", (s) => s.get(id)),
   put: (doc) => tx("docs", "readwrite", (s) => s.put(doc)),
-  del: (id) => tx("docs", "readwrite", (s) => s.delete(id)),
+  // Deleting a synced note leaves a tombstone so the sync engine trashes it in Drive too
+  del: async (id, { fromSync = false } = {}) => {
+    if (!fromSync) {
+      const r = await db.get(id).catch(() => null);
+      if (r?.remoteId) {
+        const meta = (await db.getMeta("sync").catch(() => null)) || {};
+        await db.setMeta("sync", { ...meta, tombstones: [...(meta.tombstones || []), r.remoteId] });
+      }
+    }
+    return tx("docs", "readwrite", (s) => s.delete(id));
+  },
   getMeta: (k) => tx("meta", "readonly", (s) => s.get(k)),
   setMeta: (k, v) => tx("meta", "readwrite", (s) => s.put(v, k)),
 };
