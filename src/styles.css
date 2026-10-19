@@ -513,3 +513,4 @@ body.resizing { cursor: col-resize; user-select: none; }
   #editor, .inline-edit, .ed-title, .lib-search, .tab-rename { font-size: 16px; }
   .empty .hint { display: none; }
 }
+.sync-body .legal { margin: 12px 0 0; } .sync-body .legal a { color: var(--muted); }

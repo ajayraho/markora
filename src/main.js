@@ -972,7 +972,8 @@ function renderSyncUI(st = syncState()) {
     syncPop.innerHTML = `<div class="lib-head"><strong>Sync with Google Drive</strong></div>
       <div class="sync-body"><p>See and edit your notes on every device. They're saved as <code>.md</code> files in a <b>Markora</b> folder in your own Google Drive. Markora can only see the files it creates there.</p>
       <p class="muted">Files opened from this computer's disk stay on this device.</p>
-      <button class="btn primary" id="syncConnect">Connect Google Drive</button></div>`;
+      <button class="btn primary" id="syncConnect">Connect Google Drive</button>
+      <p class="muted legal"><a href="privacy.html" target="_blank">Privacy</a> · <a href="terms.html" target="_blank">Terms</a></p></div>`;
     $("syncConnect").onclick = () => { flushAll(); connect(); };
   } else {
     const when = st.status === "syncing" ? "Syncing…" : st.status === "error" ? `Problem: ${esc(st.error || "unknown")}` : st.lastSync ? `Synced ${ago(st.lastSync)}` : "Waiting to sync";
