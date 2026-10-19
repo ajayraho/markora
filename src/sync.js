@@ -92,7 +92,7 @@ const fileName = (name) => (/\.(md|markdown|mdx|txt)$/i.test(name) ? name : name
 /** Upload a local note (create or update) and mark it synced */
 async function upload(r, folder, remoteId) {
   const meta = remoteId ? { name: fileName(r.name) }
-    : { name: fileName(r.name), parents: [folder], mimeType: "text/markdown", appProperties: { markoraId: r.id } };
+    : { name: fileName(r.name), parents: [folder], mimeType: "text/markdown", appProperties: { markoraId: r.id, origin: r.kind === "file" ? "disk" : "note" } };
   const { headers, body } = multipart(meta, r.text || "");
   const url = remoteId ? `${UPLOAD}/files/${remoteId}?uploadType=multipart&fields=${FIELDS}` : `${UPLOAD}/files?uploadType=multipart&fields=${FIELDS}`;
   const f = await gj(url, { method: remoteId ? "PATCH" : "POST", headers, body });
@@ -105,7 +105,12 @@ async function saveLocal(r, f, text) {
   const cur = await db.get(r.id);
   if (!cur || cur.updated !== r.updated) return false; // edited during sync → next round resolves it
   const now = Date.now();
-  await db.put({ ...cur, text, name: f.name, updated: now, syncedAt: now, remoteId: f.id, remoteVersion: f.version });
+  if (cur.kind === "file") {
+    // a file on this computer's disk: keep its real name; the change waits to be written to disk
+    await db.put({ ...cur, text, dirty: true, updated: now, syncedAt: now, remoteId: f.id, remoteVersion: f.version });
+  } else {
+    await db.put({ ...cur, text, name: f.name, updated: now, syncedAt: now, remoteId: f.id, remoteVersion: f.version });
+  }
   return true;
 }
 
@@ -115,7 +120,8 @@ const conflictName = (name) => `${name.replace(/\.(md|markdown|mdx|txt)$/i, "")}
 async function pass() {
   const changes = [];
   const folder = await ensureFolder();
-  let locals = (await db.all()).filter((r) => r.kind === "note");
+  // notes, plus files opened from disk (we sync the copy we last read/saved)
+  let locals = (await db.all()).filter((r) => r.kind === "note" || (r.kind === "file" && typeof r.text === "string" && !r.noSync));
   if (folder.fresh) {
     // first sync with this folder: forget old links so nothing gets deleted by mistake
     for (const r of locals) if (r.remoteId) { delete r.remoteId; delete r.remoteVersion; delete r.syncedAt; await db.put(r); }
@@ -142,7 +148,11 @@ async function pass() {
     const f = (r.remoteId && byRemoteId.get(r.remoteId)) || byKey.get(r.id);
     const localChanged = !r.syncedAt || r.updated > r.syncedAt;
     if (!f) {
-      if (r.remoteId && !localChanged) { await db.del(r.id, { fromSync: true }); changes.push({ type: "deleted", id: r.id }); }
+      if (r.remoteId && !localChanged && r.kind === "file") {
+        // its Drive copy was deleted elsewhere: stop syncing this disk file, never touch the file itself
+        const cur = await db.get(r.id);
+        await db.put({ ...cur, remoteId: undefined, remoteVersion: undefined, syncedAt: undefined, noSync: true });
+      } else if (r.remoteId && !localChanged) { await db.del(r.id, { fromSync: true }); changes.push({ type: "deleted", id: r.id }); }
       else if ((r.text || "").trim()) await upload(r, folder.id, null); // skip empty drafts
       continue;
     }
@@ -152,7 +162,7 @@ async function pass() {
     if (localChanged && !remoteChanged) { await upload(r, folder.id, f.id); continue; }
 
     const text = await download(f.id);
-    if (!localChanged) { if (await saveLocal(r, f, text)) changes.push({ type: "updated", id: r.id }); continue; }
+    if (!localChanged) { if (await saveLocal(r, f, text)) changes.push({ type: "updated", id: r.id, kind: r.kind }); continue; }
 
     // changed on both sides
     if (text === r.text) {
@@ -162,7 +172,7 @@ async function pass() {
     }
     const remoteNewer = Date.parse(f.modifiedTime) > r.updated;
     const older = remoteNewer ? { name: r.name, text: r.text } : { name: f.name, text };
-    if (remoteNewer) { if (await saveLocal(r, f, text)) changes.push({ type: "updated", id: r.id }); }
+    if (remoteNewer) { if (await saveLocal(r, f, text)) changes.push({ type: "updated", id: r.id, kind: r.kind }); }
     else await upload(r, folder.id, f.id);
     const copy = { id: newId(), kind: "note", name: conflictName(older.name), text: older.text, handle: null, dirty: false, pinned: false, lastModified: 0, size: 0, updated: Date.now() };
     await db.put(copy);
@@ -174,7 +184,7 @@ async function pass() {
     const text = await download(f.id);
     const now = Date.now();
     const id = f.appProperties?.markoraId || newId();
-    await db.put({ id, kind: "note", name: f.name, text, handle: null, dirty: false, pinned: false, lastModified: 0, size: 0, updated: now, syncedAt: now, remoteId: f.id, remoteVersion: f.version });
+    await db.put({ id, kind: "note", name: f.name, text, handle: null, dirty: false, pinned: false, lastModified: 0, size: 0, updated: now, syncedAt: now, remoteId: f.id, remoteVersion: f.version, fromDisk: f.appProperties?.origin === "disk" });
     changes.push({ type: "added", id });
   }
   return changes;

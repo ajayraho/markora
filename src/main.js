@@ -84,7 +84,7 @@ function persist(d, { now = false } = {}) {
       if (d.discarded) return;
       const prev = await db.get(d.id).catch(() => null); // keep sync bookkeeping fields
       await db.put({ ...(prev || {}), ...record(d) });
-      if (d.kind === "note") syncSoon();
+      syncSoon();
     } catch (e) { console.error("persist failed", e); }
     if (d.id === activeId) updateEditorChrome();
   };
@@ -864,7 +864,7 @@ async function renderLibrary() {
       <span class="txt"><span class="nm"></span><span class="sub"></span></span>
       <button class="del" title="${r.kind === "note" ? "Delete note" : "Remove from recent files"}">×</button>`;
     row.querySelector(".nm").textContent = displayName(r.name) + (r.dirty ? " •" : "");
-    row.querySelector(".sub").textContent = `${r.kind === "note" ? "Note" : "File"} · ${ago(r.updated)}${preview ? " · " + preview : ""}`;
+    row.querySelector(".sub").textContent = `${r.kind === "file" ? "File" : r.fromDisk ? "Synced file" : "Note"} · ${ago(r.updated)}${preview ? " · " + preview : ""}`;
     row.addEventListener("click", (e) => { if (!e.target.closest(".del")) { openFromLibrary(r); toggleLibrary(false); } });
     const del = row.querySelector(".del");
     del.addEventListener("click", async () => {
@@ -971,7 +971,7 @@ function renderSyncUI(st = syncState()) {
   if (st.status === "off") {
     syncPop.innerHTML = `<div class="lib-head"><strong>Sync with Google Drive</strong></div>
       <div class="sync-body"><p>See and edit your notes on every device. They're saved as <code>.md</code> files in a <b>Markora</b> folder in your own Google Drive. Markora can only see the files it creates there.</p>
-      <p class="muted">Files opened from this computer's disk stay on this device.</p>
+      <p class="muted">Files you open from disk sync too. Changes made elsewhere are written back to the file.</p>
       <button class="btn primary" id="syncConnect">Connect Google Drive</button>
       <p class="muted legal"><a href="privacy.html" target="_blank">Privacy</a> · <a href="terms.html" target="_blank">Terms</a></p></div>`;
     $("syncConnect").onclick = () => { flushAll(); connect(); };
@@ -979,7 +979,7 @@ function renderSyncUI(st = syncState()) {
     const when = st.status === "syncing" ? "Syncing…" : st.status === "error" ? `Problem: ${esc(st.error || "unknown")}` : st.lastSync ? `Synced ${ago(st.lastSync)}` : "Waiting to sync";
     syncPop.innerHTML = `<div class="lib-head"><strong>Google Drive</strong><span class="lib-count"></span></div>
       <div class="sync-body"><p><span class="sync-dot ${st.status}"></span>${when}${navigator.onLine ? "" : " · offline"}</p>
-      <p class="muted">Notes sync to the <b>Markora</b> folder in your Drive. Files opened from disk stay on this device.</p>
+      <p class="muted">Notes and files you open sync to the <b>Markora</b> folder in your Drive.</p>
       <div class="row"><button class="btn primary" id="syncNowBtn">Sync now</button><button class="btn" id="syncOff">Disconnect</button></div></div>`;
     syncPop.querySelector(".lib-count").textContent = st.email || "";
     $("syncNowBtn").onclick = () => syncNow();
@@ -999,8 +999,17 @@ onSyncChange(renderSyncUI);
 
 const conflictCopyName = (name) => `${displayName(name)} (conflicted copy ${new Date().toLocaleDateString()}).md`;
 
+/** A disk file was edited on another device: write it to disk if we still may, else leave it unsaved (•) */
+async function writeSyncedChange(d) {
+  const perm = await d.handle?.queryPermission?.({ mode: "readwrite" }).catch(() => "denied");
+  if (perm === "granted") await saveDoc(d);
+  else toast(`${displayName(d.name)} was edited on another device. Press Ctrl+S to save it to disk.`, 4500);
+}
+
 /** Apply changes that the sync pulled down from Drive to open tabs */
 async function onRemoteChanges(changes) {
+  const closedFiles = changes.filter((c) => c.type === "updated" && c.kind === "file" && !docs.some((d) => d.id === c.id));
+  if (closedFiles.length) toast(`${closedFiles.length === 1 ? "A file" : closedFiles.length + " files"} you opened here changed on another device. Open from the Library to save.`, 4500);
   for (const c of changes) {
     const d = docs.find((x) => x.id === c.id);
     if (!d) continue;
@@ -1015,7 +1024,10 @@ async function onRemoteChanges(changes) {
         continue;
       }
       d.text = rec.text ?? "";
-      d.name = rec.name;
+      if (d.kind === "file") {
+        d.dirty = true;
+        await writeSyncedChange(d);
+      } else d.name = rec.name;
       if (d.id === activeId) { syncEditorFromDoc({ keepCursor: true }); renderPreview(true); }
     } else if (c.type === "deleted" && !pending.has(d.id)) {
       d.discarded = true;
