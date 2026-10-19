@@ -81,7 +81,7 @@ Most Markdown previews look like a 2009 wiki page. The best-looking Markdown mos
 ### App
 - **Installable PWA** that runs in its own window
 - **Fully offline**: fonts, libraries and all assets are bundled
-- **Google Drive sync**: notes on every device, stored as `.md` files in *your* Drive
+- **Google Drive sync**: notes *and opened files* on every device, stored as `.md` files in *your* Drive
 - **Library** of notes and recent files, restored on restart
 - **Phone-friendly** layout. Install it on Android or iOS from the browser
 - **Self-updating**: every deploy reaches installed apps automatically
@@ -164,7 +164,7 @@ vercel.json      Build settings + cache headers
 
 ## Google Drive sync
 
-Notes sync to a **Markora** folder in your Google Drive as plain `.md` files you can open anywhere. Files opened from your computer's disk stay on that device.
+Notes **and the `.md` files you open from disk** sync to a **Markora** folder in your Google Drive as plain `.md` files. Open a file on Windows and it's on your phone. Edit it on your phone and the change is written back to the file on your PC. If the browser no longer has write permission, the tab shows • and `Ctrl+S` saves it.
 
 **How it behaves**
 

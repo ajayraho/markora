@@ -9,12 +9,12 @@
 <p>Markora is a Markdown reader and editor that runs in your browser. It's built so that your documents stay yours: there's no Markora account and no Markora database.</p>
 
 <h2>What stays on your device</h2>
-<p>Notes, your library, open tabs and settings (style, theme) are stored in your browser's local storage (IndexedDB and localStorage). Files you open from your computer are read and saved directly by your browser. They are never uploaded anywhere by Markora.</p>
+<p>Notes, your library, open tabs and settings (style, theme) are stored in your browser's local storage (IndexedDB and localStorage). Files you open from your computer are read and saved directly by your browser. If you turn on Google Drive sync, a copy of each Markdown file you open is kept in your own Drive so it's available on your other devices. Nothing is uploaded anywhere else.</p>
 
 <h2>Google Drive sync (optional)</h2>
 <p>If you choose <b>Connect Google Drive</b>, Markora asks Google for these permissions:</p>
 <ul>
-  <li><code>drive.file</code>: create and edit only the files Markora itself creates (a <b>Markora</b> folder with your notes as <code>.md</code> files). Markora cannot see any other files in your Drive.</li>
+  <li><code>drive.file</code>: create and edit only the files Markora itself creates (a <b>Markora</b> folder holding copies of your notes and of the Markdown files you open in Markora). Markora cannot see any other files in your Drive.</li>
   <li><code>openid</code> and <code>email</code>: to show which Google account is connected.</li>
 </ul>
 <p>Your notes travel directly between your browser and Google's servers. Markora's server never receives, reads or stores their contents.</p>
