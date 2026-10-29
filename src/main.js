@@ -1,6 +1,7 @@
 import { renderMarkdown, renderMermaid, esc, COPY_ICON, CHECK_ICON } from "./render.js";
 import { db, MAX_ITEMS, MAX_TEXT, requestPersistence } from "./db.js";
 import { setupEditor, ACTIONS } from "./editor.js";
+import { resolveImages, insertImages, setImageToast } from "./images.js";
 import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect } from "./sync.js";
 import SAMPLE from "./sample.md";
 
@@ -241,6 +242,11 @@ addEventListener("drop", async (e) => {
   e.preventDefault();
   dragDepth = 0;
   els.drop.classList.add("hidden");
+  const dropped = imageFiles(e.dataTransfer?.files);
+  if (dropped.length) {
+    if (active() && editorOpen) { await insertImages(els.editor, dropped).catch((err) => toast("Couldn't add image: " + err.message)); return; }
+    if (dropped.length === (e.dataTransfer?.files?.length || 0)) { toast("Open the editor (Ctrl+E) and drop images there to add them"); return; }
+  }
   const items = [...(e.dataTransfer?.items || [])].filter((i) => i.kind === "file");
   const handlesP = items.map((i) => (i.getAsFileSystemHandle ? i.getAsFileSystemHandle() : Promise.resolve(null)));
   const files = items.map((i) => i.getAsFile());
@@ -619,6 +625,7 @@ async function renderPreview(keepScroll = false) {
   });
   els.md.querySelectorAll('input[type="checkbox"][disabled]').forEach((c) => { c.disabled = false; });
   const mermaidDone = renderMermaid(els.md); // cached diagrams fill synchronously → no jump while typing
+  resolveImages(els.md, d, () => renderPreview(true));
   buildOutline();
   scrollTo(0, y);
   await mermaidDone;
@@ -732,6 +739,16 @@ for (const [gi, g] of GROUPS.entries()) {
   }
 }
 setupEditor(els.editor);
+setImageToast((m) => toast(m, 3500));
+
+// Paste or drop images into the editor → embedded in the note
+const imageFiles = (list) => [...(list || [])].filter((f) => f.type.startsWith("image/"));
+els.editor.addEventListener("paste", (e) => {
+  const imgs = imageFiles(e.clipboardData?.files);
+  if (!imgs.length) return;
+  e.preventDefault();
+  insertImages(els.editor, imgs).catch((err) => toast("Couldn't add image: " + err.message));
+});
 
 function setEditor(open, { focus = false } = {}) {
   editorOpen = open;

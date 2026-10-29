@@ -26,7 +26,7 @@ function tx(store, mode, fn) {
   return open().then((db) => new Promise((res, rej) => {
     const t = db.transaction(store, mode);
     const out = fn(t.objectStore(store));
-    t.oncomplete = () => res(out?.result ?? out);
+    t.oncomplete = () => res(out instanceof IDBRequest ? out.result : out);
     t.onerror = () => rej(t.error);
     t.onabort = () => rej(t.error);
   }));

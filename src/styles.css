@@ -514,3 +514,11 @@ body.resizing { cursor: col-resize; user-select: none; }
   .empty .hint { display: none; }
 }
 .sync-body .legal { margin: 12px 0 0; } .sync-body .legal a { color: var(--muted); }
+
+/* Images */
+.md img { display: block; margin: .4em auto; max-height: 80vh; }
+.md p > img:only-child { margin: 0 auto; }
+.img-missing { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); font: 13px var(--ui-font); text-align: left; }
+button.img-missing { cursor: pointer; }
+button.img-missing:hover { color: var(--fg); border-color: var(--accent); }
+.img-missing svg { width: 18px; height: 18px; flex: none; }
