@@ -522,3 +522,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 button.img-missing { cursor: pointer; }
 button.img-missing:hover { color: var(--fg); border-color: var(--accent); }
 .img-missing svg { width: 18px; height: 18px; flex: none; }
+.md a.img-link { display: block; text-decoration: none; text-align: center; }
+.md a.img-link img { margin: 0 auto .4em; }
+.md a.img-link .img-cap { display: block; font: 13px/1.4 var(--ui-font); color: var(--muted); }
+.md a.img-link:hover .img-cap { color: var(--link); text-decoration: underline; }

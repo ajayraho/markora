@@ -127,3 +127,34 @@ export async function insertImages(ta, files) {
   ta.setSelectionRange(s + insert.length, s + insert.length);
   ta.dispatchEvent(new Event("input", { bubbles: true }));
 }
+
+/* ---------- links that point at images (e.g. pasted from ChatGPT) ---------- */
+const IMG_EXT = /\.(png|jpe?g|gif|webp|avif|svg|bmp)(?:[?#]|$)/i;
+const IMG_HOSTS = /(^|\.)(images\.openai\.com|oaiusercontent\.com|i\.imgur\.com|pbs\.twimg\.com|googleusercontent\.com|githubusercontent\.com|media\.discordapp\.net|cdn\.discordapp\.com)$/i;
+
+function looksLikeImage(href) {
+  try {
+    const u = new URL(href);
+    return /^https?:$/.test(u.protocol) && (IMG_EXT.test(u.pathname) || IMG_HOSTS.test(u.hostname));
+  } catch { return false; }
+}
+
+/** A link alone on its line that points at an image → show the image, link text as caption */
+export function previewImageLinks(root) {
+  for (const a of root.querySelectorAll("p > a[href]")) {
+    const p = a.parentElement;
+    if (p.childNodes.length !== 1 || a.querySelector("img") || !looksLikeImage(a.href)) continue;
+    const caption = a.textContent;
+    const img = new Image();
+    img.alt = caption;
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    img.src = a.href;
+    const cap = document.createElement("span");
+    cap.className = "img-cap";
+    cap.textContent = caption;
+    a.classList.add("img-link");
+    a.replaceChildren(img, cap);
+    img.addEventListener("error", () => { a.classList.remove("img-link"); a.replaceChildren(caption); }, { once: true });
+  }
+}

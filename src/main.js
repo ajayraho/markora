@@ -1,7 +1,7 @@
 import { renderMarkdown, renderMermaid, esc, COPY_ICON, CHECK_ICON } from "./render.js";
 import { db, MAX_ITEMS, MAX_TEXT, requestPersistence } from "./db.js";
 import { setupEditor, ACTIONS } from "./editor.js";
-import { resolveImages, insertImages, setImageToast } from "./images.js";
+import { resolveImages, insertImages, setImageToast, previewImageLinks } from "./images.js";
 import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect } from "./sync.js";
 import SAMPLE from "./sample.md";
 
@@ -626,6 +626,7 @@ async function renderPreview(keepScroll = false) {
   els.md.querySelectorAll('input[type="checkbox"][disabled]').forEach((c) => { c.disabled = false; });
   const mermaidDone = renderMermaid(els.md); // cached diagrams fill synchronously → no jump while typing
   resolveImages(els.md, d, () => renderPreview(true));
+  previewImageLinks(els.md);
   buildOutline();
   scrollTo(0, y);
   await mermaidDone;
