@@ -50,6 +50,7 @@ Most Markdown previews look like a 2009 wiki page. The best-looking Markdown mos
 - **Math**: KaTeX for `$…$`, `$$…$$`, `\(…\)` and `\[…\]`
 - **Diagrams**: Mermaid, lazy-loaded only when a document uses them
 - **Navigation**: a sticky outline of headings, plus reading time and word count
+- **Images**: web images, images next to the file (`./img/a.png`, after a one-time folder permission), and pasted or dropped images
 - **Typography**: smart quotes, and frontmatter shown collapsed
 
 </td>
