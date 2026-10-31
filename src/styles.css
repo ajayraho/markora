@@ -570,3 +570,8 @@ body.diff-mode main { display: none; }
   .dv-col + .dv-col, .dv-col-head + .dv-col-head { border-left: 0; border-top: 1px solid var(--border); }
   .dv-ta, .dv-hl { font-size: 16px; line-height: 20px; }
 }
+.diff-view.wrap .dv-ta, .diff-view.wrap .dv-hl { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-view.wrap .dv-ta { overflow-x: hidden; }
+.diff-view.wrap .dv-hl { min-width: 0; }
+.dv-gin > div { overflow: hidden; }
+#dvWrap[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }

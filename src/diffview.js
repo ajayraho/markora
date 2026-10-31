@@ -75,6 +75,7 @@ export function createDiffView(root, { onChange }) {
       <div class="dv-col-head"><span class="dv-tag del">Original</span><span class="dv-hint">paste or type</span></div>
       <div class="dv-col-head"><span class="dv-tag add">Modified</span><span class="dv-stats" id="dvStats"></span>
         <button class="btn sm" id="dvSwap" title="Swap sides">⇄ Swap</button>
+        <button class="btn sm" id="dvWrap" title="Wrap long lines in both columns">↩ Wrap</button>
         <button class="btn sm" id="dvClear" title="Clear both sides">Clear</button></div>
     </div>
     <div class="dv-body">
@@ -97,10 +98,38 @@ export function createDiffView(root, { onChange }) {
     result = compute(P.l.ta.value, P.r.ta.value);
     paint(P.l.hl, P.l.gin, result.L, result.sideL);
     paint(P.r.hl, P.r.gin, result.R, result.sideR);
+    layout();
     stats.innerHTML = result.same ? `<span class="same">Identical</span>` : `<span class="a">+${result.added}</span> <span class="d">−${result.removed}</span>`;
     follow(P.l); follow(P.r);
   }
   const schedule = () => { clearTimeout(timer); timer = setTimeout(refresh, P.l.ta.value.length + P.r.ta.value.length > 50_000 ? 150 : 40); };
+
+  // Line geometry. Without wrapping every line is LINE_H tall; with wrapping we measure the
+  // highlight layer (which wraps exactly like the textarea) and size the line numbers to match.
+  let wrap = false;
+  try { wrap = localStorage.getItem("markora.diffWrap") === "1"; } catch {}
+  const offsets = { l: [], r: [] };
+  function layout() {
+    for (const s of ["l", "r"]) {
+      const p = P[s];
+      p.hl.style.width = wrap ? p.ta.clientWidth + "px" : "";
+      const lines = p.hl.children, nums = p.gin.children;
+      const off = [];
+      for (let i = 0; i < lines.length; i++) {
+        off.push(wrap ? lines[i].offsetTop : 12 + i * LINE_H);
+        if (nums[i]) nums[i].style.height = wrap ? lines[i].offsetHeight + "px" : "";
+      }
+      offsets[s] = off;
+    }
+  }
+  const lineAt = (off, y) => { let lo = 0, hi = off.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (off[m] <= y) lo = m; else hi = m - 1; } return lo; };
+  function setWrap(on) {
+    wrap = on;
+    try { localStorage.setItem("markora.diffWrap", on ? "1" : "0"); } catch {}
+    root.classList.toggle("wrap", on);
+    root.querySelector("#dvWrap").setAttribute("aria-pressed", String(on));
+    layout(); follow(P.l); follow(P.r);
+  }
 
   // keep highlight layer + line numbers glued to the textarea's scroll position
   const follow = (p) => {
@@ -111,10 +140,14 @@ export function createDiffView(root, { onChange }) {
   function mirror(from, to, map, maxLine) {
     if (syncing || !result) return;
     syncing = true;
-    const line = from.ta.scrollTop / LINE_H;
-    const i = Math.floor(line), frac = line - i;
-    const target = map(Math.min(i, maxLine));
-    to.ta.scrollTop = (target + frac) * LINE_H;
+    const fo = offsets[from === P.l ? "l" : "r"], to_ = offsets[to === P.l ? "l" : "r"];
+    const y = from.ta.scrollTop + 12;
+    const i = lineAt(fo, y);
+    const h = (fo[i + 1] ?? fo[i] + LINE_H) - fo[i];
+    const frac = h ? Math.min(1, (y - fo[i]) / h) : 0;
+    const j = Math.min(map(Math.min(i, maxLine)), to_.length - 1);
+    const th = (to_[j + 1] ?? to_[j] + LINE_H) - to_[j];
+    to.ta.scrollTop = Math.max(0, (to_[j] ?? 12) + frac * th - 12);
     follow(to);
     requestAnimationFrame(() => (syncing = false));
   }
@@ -136,6 +169,10 @@ export function createDiffView(root, { onChange }) {
       }
     });
   }
+
+  root.querySelector("#dvWrap").addEventListener("click", () => setWrap(!wrap));
+  new ResizeObserver(() => { if (wrap) { layout(); follow(P.l); follow(P.r); } }).observe(P.l.ta);
+  setWrap(wrap);
 
   root.querySelector("#dvSwap").addEventListener("click", () => {
     [P.l.ta.value, P.r.ta.value] = [P.r.ta.value, P.l.ta.value];
