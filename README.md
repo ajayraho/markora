@@ -169,10 +169,15 @@ Notes **and the `.md` files you open from disk** sync to a **Markora** folder in
 
 **How it behaves**
 
-- **When it syncs:** a few seconds after you stop typing, every minute while the app is open, and when you come back online.
-- **Offline:** every device keeps its own copy, so the app works offline.
-- **Edits on two devices before syncing:** the newest save wins, and the other version is kept as a *conflicted copy*. Nothing is silently lost.
-- **Deletions:** deleting a note on one device moves it to Drive's trash and removes it from your other devices.
+- **One document per name.** `plan.md` on your PC, on your phone and in Drive is the same document, and Drive never ends up with two files of the same name.
+- **Saving.**
+  - **Typing** saves to the browser instantly.
+  - **Drive** gets changes in batches: after about 30 s of quiet, when you switch tabs or hide the app, or right away on `Ctrl+S`.
+  - **Files on disk:** `Ctrl+S` writes the file *and* Drive.
+  - **Notes:** `Ctrl+S` saves to Drive with no dialog. `Ctrl+Shift+S` saves a note as a file.
+- **Merging.** Edits made on two devices are merged line by line. Where both changed the same lines, the most recent edit wins. Drive's own version history (*File → Manage versions*) still has the older text, and there are no "conflicted copy" files.
+- **Storage.** Without Drive, the browser keeps everything. With Drive, notes you haven't opened for 30 days keep just a placeholder on the device and download again when you open them. Files from disk always keep a local copy.
+- **Deleting.** Deleting a document on one device removes it everywhere. If lots of documents vanish from Drive at once (say you deleted the folder), Markora assumes a clean-up rather than deletions and uploads them again instead of deleting them on your devices.
 
 ### One-time setup (about 10 minutes)
 
