@@ -1,6 +1,7 @@
 import { renderMarkdown, renderMermaid, esc, COPY_ICON, CHECK_ICON } from "./render.js";
 import { db, MAX_ITEMS, MAX_TEXT, requestPersistence } from "./db.js";
 import { setupEditor, ACTIONS } from "./editor.js";
+import { createDiffView } from "./diffview.js";
 import { resolveImages, insertImages, setImageToast, previewImageLinks } from "./images.js";
 import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect, isConnected, fetchText, nameKey } from "./sync.js";
 import SAMPLE from "./sample.md";
@@ -286,6 +287,7 @@ els.input.addEventListener("change", async () => {
 $("openBtn").addEventListener("click", pickFiles);
 $("emptyOpen").addEventListener("click", pickFiles);
 $("emptyNew").addEventListener("click", () => newNote());
+$("diffBtn").addEventListener("click", () => newDiff());
 $("sampleBtn").addEventListener("click", () => newNote(SAMPLE, "Welcome to Markora.md", { edit: false, reuse: true }));
 
 // Drag & drop anywhere
@@ -357,6 +359,7 @@ setInterval(async () => {
 
 async function saveDoc(d = active(), { saveAs = false } = {}) {
   if (!d) return;
+  if (d.kind === "diff") { await persist(d, { now: true }); return toast("Diffs are saved in this browser automatically"); }
   if (d.kind === "file" && d.handle && !saveAs) {
     try {
       if ((await d.handle.queryPermission({ mode: "readwrite" })) !== "granted" &&
@@ -429,7 +432,8 @@ function closeDoc(id, { force = false } = {}) {
   const i = docs.findIndex((d) => d.id === id);
   if (i < 0) return;
   const d = docs[i];
-  if (d.kind === "note" && !d.text.trim()) {
+  const emptyDiff = d.kind === "diff" && !parseDiff(d).left.trim() && !parseDiff(d).right.trim();
+  if ((d.kind === "note" && !d.text.trim()) || emptyDiff) {
     // Closing an empty note discards it, so the library doesn't fill up with blank "Untitled N"s
     d.discarded = true;
     clearTimeout(pending.get(d.id)); pending.delete(d.id);
@@ -556,7 +560,7 @@ function renderTabs() {
     t.dataset.id = d.id;
     const live = d.kind === "file" && d.handle && !d.needsPermission;
     t.title = (d.kind === "note" ? `${d.name} — note saved in browser` : live ? `${d.name} — live reload on` : d.name) + "\nDouble-click to rename (F2)";
-    const dot = live ? '<span class="live"></span>' : d.kind === "note" ? '<span class="note-dot"></span>' : "";
+    const dot = live ? '<span class="live"></span>' : d.kind === "diff" ? '<span class="diff-ico">±</span>' : d.kind === "note" ? '<span class="note-dot"></span>' : "";
     t.innerHTML = d.pinned
       ? `<span class="pin" title="Pinned">${PIN_ICON}</span><span class="name"></span>${dot}`
       : `${dot}<span class="name"></span><button class="x" title="Close (Alt+W)" aria-label="Close">×</button>`;
@@ -675,9 +679,40 @@ function renderMeta() {
   } else banner?.remove();
 }
 
+/* ---------- Diff tabs: two live-diffed columns, kept in this browser only ---------- */
+const diffRoot = $("diffView");
+const parseDiff = (d) => { try { const j = JSON.parse(d.text || "{}"); return { left: j.left || "", right: j.right || "" }; } catch { return { left: "", right: "" }; } };
+const diffView = createDiffView(diffRoot, {
+  onChange(left, right) {
+    const d = active();
+    if (d?.kind !== "diff") return;
+    d.text = JSON.stringify({ left, right });
+    persist(d);
+  },
+});
+async function newDiff() {
+  const taken = await takenNames();
+  let n = 1;
+  while (taken.has(nameKey(`Diff ${n}`))) n++;
+  addDoc({ id: newId(), kind: "diff", name: `Diff ${n}`, text: JSON.stringify({ left: "", right: "" }) });
+  diffView.focus();
+}
+let shownDiffId = null;
+
 async function renderPreview(keepScroll = false) {
   if (inlineEdit) return;
   const d = active();
+  const isDiff = d?.kind === "diff";
+  diffRoot.classList.toggle("hidden", !isDiff);
+  document.body.classList.toggle("diff-mode", isDiff);
+  if (isDiff) {
+    for (const el of [els.empty, els.doc, els.pane, els.resizer, els.outline]) el.classList.add("hidden");
+    els.layout.classList.remove("editing");
+    document.title = `${displayName(d.name)} — Markora`;
+    if (shownDiffId !== d.id) { const { left, right } = parseDiff(d); diffView.load(left, right); shownDiffId = d.id; }
+    return;
+  }
+  shownDiffId = null;
   const hasDoc = !!d;
   els.empty.classList.toggle("hidden", hasDoc);
   els.doc.classList.toggle("hidden", !hasDoc);
@@ -833,6 +868,7 @@ $("collapseBtn").addEventListener("click", () => setEditor(false));
 
 function syncEditorFromDoc({ keepCursor = false } = {}) {
   const d = active();
+  if (d?.kind === "diff") return;
   if (!d || !editorOpen) return updateEditorChrome();
   if (els.editor.value !== d.text) {
     const { selectionStart: s, selectionEnd: e, scrollTop } = els.editor;
@@ -946,12 +982,12 @@ async function renderLibrary() {
   for (const r of rows) {
     const row = document.createElement("div");
     row.className = "lib-row" + (r.id === activeId ? " current" : "");
-    const preview = (r.text || "").replace(/[#>*_`\-\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const preview = r.kind === "diff" ? "" : (r.text || "").replace(/[#>*_`\-\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
     row.innerHTML = `<span class="ico">${r.kind === "note" ? NOTE_ICON : FILE_ICON}</span>
       <span class="txt"><span class="nm"></span><span class="sub"></span></span>
       <button class="del" title="${r.kind === "note" ? "Delete note" : "Remove from recent files"}">×</button>`;
     row.querySelector(".nm").textContent = displayName(r.name) + (r.dirty ? " •" : "");
-    const where = r.kind === "file" ? "On this device" : typeof r.text !== "string" ? "In Google Drive" : r.remoteId ? "Synced" : "This browser";
+    const where = r.kind === "diff" ? "Diff · this browser" : r.kind === "file" ? "On this device" : typeof r.text !== "string" ? "In Google Drive" : r.remoteId ? "Synced" : "This browser";
     row.querySelector(".sub").textContent = `${where} · ${ago(r.updated)}${preview ? " · " + preview : ""}`;
     row.addEventListener("click", (e) => { if (!e.target.closest(".del")) { openFromLibrary(r); toggleLibrary(false); } });
     const del = row.querySelector(".del");
@@ -1137,11 +1173,12 @@ addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (mod && k === "s") { e.preventDefault(); saveDoc(active(), { saveAs: e.shiftKey }); }
   else if (mod && k === "o") { e.preventDefault(); pickFiles(); }
-  else if (mod && k === "e") { e.preventDefault(); active() ? setEditor(!editorOpen, { focus: !editorOpen }) : newNote(); }
+  else if (mod && k === "e") { e.preventDefault(); if (active()?.kind === "diff") return; active() ? setEditor(!editorOpen, { focus: !editorOpen }) : newNote(); }
   else if (mod && e.shiftKey && k === "l") { e.preventDefault(); toggleLibrary(); }
   else if (mod && e.key === "\\") { e.preventDefault(); toggleOutline(); }
   else if (e.key === "F2" && activeId != null && !e.target.closest?.("input, textarea")) { e.preventDefault(); startTabRename(activeId); }
   else if (e.altKey && k === "n") { e.preventDefault(); newNote(); }
+  else if (e.altKey && k === "d") { e.preventDefault(); newDiff(); }
   else if (e.altKey && k === "w" && activeId != null) { e.preventDefault(); closeDoc(activeId); }
   else if (e.key === "Escape" && !els.library.classList.contains("hidden")) toggleLibrary(false);
   else if (mod && e.shiftKey && (e.key === "PageUp" || e.key === "PageDown") && activeId != null) { e.preventDefault(); moveTab(activeId, e.key === "PageUp" ? -1 : 1); }
