@@ -59,6 +59,7 @@ Most Markdown previews look like a 2009 wiki page. The best-looking Markdown mos
 ### Writing
 - **Side-by-side editor** with live preview, scroll sync and a resizable split
 - **Edit in the preview**: double-click any block to edit its Markdown in place
+- **Live diff tabs** (`Alt+D`): two editable columns compared as you type, IDE-style, with line and word highlights and synced scrolling. Kept in this browser only
 - **Clickable checkboxes** that write `[x]` back to the file
 - **Toolbar & shortcuts**: bold, links, lists, tables, code blocks
 - **List auto-continue**, `Tab` indent / outdent
@@ -211,6 +212,7 @@ Notes **and the `.md` files you open from disk** sync to a **Markora** folder in
 | --- | --- |
 | New note | `Alt+N` |
 | Open file | `Ctrl+O` |
+| New diff | `Alt+D` |
 | Toggle editor | `Ctrl+E` |
 | Save / Save as | `Ctrl+S` / `Ctrl+Shift+S` |
 | Library | `Ctrl+Shift+L` |
