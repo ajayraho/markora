@@ -2,7 +2,7 @@ import { renderMarkdown, renderMermaid, esc, COPY_ICON, CHECK_ICON } from "./ren
 import { db, MAX_ITEMS, MAX_TEXT, requestPersistence } from "./db.js";
 import { setupEditor, ACTIONS } from "./editor.js";
 import { resolveImages, insertImages, setImageToast, previewImageLinks } from "./images.js";
-import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect } from "./sync.js";
+import { initSync, syncNow, syncSoon, syncState, onSyncChange, connect, disconnect, isConnected, fetchText, nameKey } from "./sync.js";
 import SAMPLE from "./sample.md";
 
 /* ============================================================
@@ -54,7 +54,7 @@ const record = (d) => ({
   id: d.id, kind: d.kind, name: d.name,
   text: d.text.length <= MAX_TEXT ? d.text : null,
   handle: d.handle || null, dirty: !!d.dirty,
-  lastModified: d.lastModified || 0, size: d.size || 0, updated: Date.now(),
+  lastModified: d.lastModified || 0, size: d.size || 0,
 });
 
 /** Make room for one more library item. Returns false if the library is full of notes. */
@@ -84,8 +84,10 @@ function persist(d, { now = false } = {}) {
       }
       if (d.discarded) return;
       const prev = await db.get(d.id).catch(() => null); // keep sync bookkeeping fields
-      await db.put({ ...(prev || {}), ...record(d) });
-      syncSoon();
+      const rec = record(d);
+      const changed = !prev || prev.text !== rec.text || prev.name !== rec.name;
+      await db.put({ ...(prev || {}), ...rec, updated: changed ? Date.now() : prev.updated });
+      if (changed) syncSoon(); // batched: pushed after ~30 s of quiet, on tab switch, hide or Ctrl+S
     } catch (e) { console.error("persist failed", e); }
     if (d.id === activeId) updateEditorChrome();
   };
@@ -105,6 +107,7 @@ async function restoreSession() {
   for (const id of session.open) {
     const r = await db.get(id).catch(() => null);
     if (!r) continue;
+    if (r.kind === "note" && typeof r.text !== "string") continue; // only in Drive: open it from the Library
     const d = { ...r, text: r.text ?? "", scroll: 0 };
     if (d.kind === "file" && d.handle) {
       const perm = await d.handle.queryPermission?.({ mode: "read" }).catch(() => "denied");
@@ -167,20 +170,41 @@ function addDoc(d) {
   saveSession();
 }
 
-/** Next free "Untitled N" name across open tabs and the library */
+/* One document per name (case-insensitive): "plan.md" here, on your phone and in Drive is one document. */
+async function takenNames(exceptId) {
+  const taken = new Set();
+  for (const r of await db.all().catch(() => [])) if (r.id !== exceptId) taken.add(nameKey(r.name));
+  for (const d of docs) if (d.id !== exceptId) taken.add(nameKey(d.name));
+  for (const n of (await db.getMeta("sync").catch(() => null))?.remoteNames || []) taken.add(n);
+  return taken;
+}
+async function findByName(name) {
+  const k = nameKey(name);
+  return docs.find((d) => nameKey(d.name) === k) || (await db.all().catch(() => [])).find((r) => nameKey(r.name) === k) || null;
+}
+/** "Pasted.md" → "Pasted 2.md" if the name is taken */
+async function uniqueName(name) {
+  const taken = await takenNames();
+  const base = displayName(name), ext = name.match(MD_EXT)?.[0] || ".md";
+  if (!taken.has(nameKey(base + ext))) return base + ext;
+  let n = 2;
+  while (taken.has(nameKey(`${base} ${n}${ext}`))) n++;
+  return `${base} ${n}${ext}`;
+}
 async function nextUntitled() {
-  const taken = new Set(docs.map((d) => displayName(d.name).toLowerCase()));
-  for (const r of await db.all().catch(() => [])) taken.add(displayName(r.name).toLowerCase());
+  const taken = await takenNames();
   let n = 1;
-  while (taken.has(`untitled ${n}`)) n++;
+  while (taken.has(`untitled ${n}.md`)) n++;
   return `Untitled ${n}.md`;
 }
 
-async function newNote(text = "", name = null, { edit = true } = {}) {
-  name ??= await nextUntitled();
-  // Reuse an identical open note instead of duplicating it (e.g. clicking "View sample" twice)
-  const same = docs.find((d) => d.kind === "note" && d.name === name && d.text === text && text);
-  if (same) return activate(same.id);
+async function newNote(text = "", name = null, { edit = true, reuse = false } = {}) {
+  if (name && reuse) {
+    // e.g. "View sample": open the existing document with this name
+    const same = await findByName(name);
+    if (same) { await openFromLibrary(same); return; }
+  }
+  name = name ? await uniqueName(name) : await nextUntitled();
   addDoc({ id: newId(), kind: "note", name, text });
   if (edit) setEditor(true, { focus: true });
 }
@@ -195,6 +219,25 @@ async function openHandle(handle) {
   let known = null;
   for (const r of await db.all().catch(() => [])) if (r.handle && (await r.handle.isSameEntry(handle).catch(() => false))) { known = r; break; }
   const file = await handle.getFile();
+  if (!known) {
+    // Same name already in the library (a note, or the synced copy from another device)? It's the same document.
+    const same = await findByName(file.name);
+    if (same) {
+      const openTab = docs.find((d) => d.id === same.id);
+      const rec = openTab || same;
+      const diskText = await file.text();
+      const localNewer = typeof rec.text === "string" && rec.text !== diskText && (rec.updated || 0) > file.lastModified;
+      const d = openTab || { ...same, text: same.text ?? "", scroll: 0 };
+      Object.assign(d, { kind: "file", handle, name: file.name, lastModified: file.lastModified, size: file.size, needsPermission: false, noSync: false });
+      if (localNewer) { d.dirty = true; toast("Your newer edits are kept. Press Ctrl+S to write them to the file."); }
+      else { d.text = diskText; d.dirty = false; }
+      if (!openTab) docs.push(d);
+      persist(d, { now: true });
+      activate(d.id);
+      saveSession();
+      return;
+    }
+  }
   if (known?.dirty) {
     const d = { ...known, handle, needsPermission: false, scroll: 0 };
     docs.push(d);
@@ -207,8 +250,20 @@ async function openHandle(handle) {
 }
 
 async function openPlainFile(file) {
-  // No handle (e.g. Firefox, or input[type=file]) → it becomes a browser note
-  newNote(await file.text(), file.name, { edit: false });
+  // No handle (phones, Firefox): it becomes a note, or updates the document with the same name
+  const text = await file.text();
+  const same = await findByName(file.name);
+  if (!same) return newNote(text, file.name, { edit: false });
+  await openFromLibrary(same);
+  const d = active();
+  if (d && d.text !== text) {
+    d.text = text;
+    if (d.kind === "file") d.dirty = true;
+    persist(d);
+    syncEditorFromDoc({ keepCursor: false });
+    renderPreview();
+    renderTabs();
+  }
 }
 
 async function pickFiles() {
@@ -231,7 +286,7 @@ els.input.addEventListener("change", async () => {
 $("openBtn").addEventListener("click", pickFiles);
 $("emptyOpen").addEventListener("click", pickFiles);
 $("emptyNew").addEventListener("click", () => newNote());
-$("sampleBtn").addEventListener("click", () => newNote(SAMPLE, "Welcome to Markora.md", { edit: false }));
+$("sampleBtn").addEventListener("click", () => newNote(SAMPLE, "Welcome to Markora.md", { edit: false, reuse: true }));
 
 // Drag & drop anywhere
 let dragDepth = 0;
@@ -311,10 +366,18 @@ async function saveDoc(d = active(), { saveAs = false } = {}) {
       await w.close();
       const f = await d.handle.getFile();
       Object.assign(d, { dirty: false, lastModified: f.lastModified, size: f.size, needsPermission: false });
-      persist(d, { now: true });
+      await persist(d, { now: true });
       renderTabs(); updateEditorChrome(); renderMeta();
-      toast(`Saved ${d.name}`);
+      toast(`Saved ${d.name}${isConnected() ? " (and to Google Drive)" : ""}`);
+      syncNow();
     } catch (e) { toast("Save failed: " + e.message, 3000); }
+    return;
+  }
+  if (d.kind === "note" && !saveAs) {
+    await persist(d, { now: true });
+    if (isConnected()) { await syncNow(); toast(syncState().status === "error" ? "Saved here. Drive sync will retry." : "Saved to Google Drive"); }
+    else toast("Saved in this browser. Ctrl+Shift+S saves it as a file.");
+    updateEditorChrome();
     return;
   }
   // Notes (or Save As): pick a location on disk
@@ -327,7 +390,8 @@ async function saveDoc(d = active(), { saveAs = false } = {}) {
       await w.close();
       const f = await handle.getFile();
       Object.assign(d, { kind: "file", handle, name: f.name, dirty: false, lastModified: f.lastModified, size: f.size, transient: false });
-      persist(d, { now: true });
+      await persist(d, { now: true });
+      syncSoon(1000);
       renderTabs(); updateEditorChrome(); renderMeta();
       toast(`Saved to ${f.name} — edits now save to this file`);
     } catch (e) { if (e.name !== "AbortError") toast("Save failed: " + e.message, 3000); }
@@ -352,7 +416,8 @@ if ("launchQueue" in window) {
    ============================================================ */
 function activate(id) {
   const prev = active();
-  if (prev && prev.id !== id) prev.scroll = scrollY;
+  if (prev && prev.id !== id) { prev.scroll = scrollY; syncSoon(1500); }
+  if (id) db.get(id).then((r) => r && db.put({ ...r, lastOpened: Date.now() })).catch(() => {});
   activeId = id;
   renderTabs();
   syncEditorFromDoc();
@@ -554,6 +619,10 @@ async function renameDoc(d, raw) {
   if (!name) return false;
   if (!MD_EXT.test(name)) name += d.name.match(MD_EXT)?.[0] || ".md";
   if (name === d.name) return true;
+  if (nameKey(name) !== nameKey(d.name) && (await takenNames(d.id)).has(nameKey(name))) {
+    toast(`"${displayName(name)}" already exists. Pick another name.`, 3000);
+    return false;
+  }
   if (d.kind === "file" && d.handle) {
     if (typeof d.handle.move !== "function") {
       toast("This browser can't rename files on disk. Use Save as (Ctrl+Shift+S) instead.", 3500);
@@ -882,7 +951,8 @@ async function renderLibrary() {
       <span class="txt"><span class="nm"></span><span class="sub"></span></span>
       <button class="del" title="${r.kind === "note" ? "Delete note" : "Remove from recent files"}">×</button>`;
     row.querySelector(".nm").textContent = displayName(r.name) + (r.dirty ? " •" : "");
-    row.querySelector(".sub").textContent = `${r.kind === "file" ? "File" : r.fromDisk ? "Synced file" : "Note"} · ${ago(r.updated)}${preview ? " · " + preview : ""}`;
+    const where = r.kind === "file" ? "On this device" : typeof r.text !== "string" ? "In Google Drive" : r.remoteId ? "Synced" : "This browser";
+    row.querySelector(".sub").textContent = `${where} · ${ago(r.updated)}${preview ? " · " + preview : ""}`;
     row.addEventListener("click", (e) => { if (!e.target.closest(".del")) { openFromLibrary(r); toggleLibrary(false); } });
     const del = row.querySelector(".del");
     del.addEventListener("click", async () => {
@@ -904,6 +974,10 @@ async function renderLibrary() {
 
 async function openFromLibrary(r) {
   if (docs.some((d) => d.id === r.id)) return activate(r.id);
+  if (typeof r.text !== "string" && r.kind === "note") {
+    if (!isConnected() || !navigator.onLine) return toast("This note is in Google Drive. Connect to the internet to open it.");
+    try { r = { ...r, text: await fetchText(r) }; } catch (e) { return toast("Couldn't download it: " + e.message); }
+  }
   const d = { ...r, text: r.text ?? "", scroll: 0 };
   if (d.kind === "file" && d.handle) {
     let perm = await d.handle.queryPermission({ mode: "read" }).catch(() => "denied");
@@ -1001,7 +1075,10 @@ function renderSyncUI(st = syncState()) {
       <div class="row"><button class="btn primary" id="syncNowBtn">Sync now</button><button class="btn" id="syncOff">Disconnect</button></div></div>`;
     syncPop.querySelector(".lib-count").textContent = st.email || "";
     $("syncNowBtn").onclick = () => syncNow();
-    $("syncOff").onclick = async () => { await disconnect(); toast("Disconnected. Your notes stay on this device."); };
+    $("syncOff").onclick = async () => {
+      const { missing } = await disconnect();
+      toast(missing ? `Disconnected. ${missing} notes couldn't be downloaded and stay only in Drive.` : "Disconnected. All your notes are kept on this device.", 4000);
+    };
   }
 }
 function toggleSyncPop(on = syncPop.classList.contains("hidden")) {
@@ -1015,7 +1092,7 @@ document.addEventListener("pointerdown", (e) => {
 });
 onSyncChange(renderSyncUI);
 
-const conflictCopyName = (name) => `${displayName(name)} (conflicted copy ${new Date().toLocaleDateString()}).md`;
+const isBusy = (id) => pending.has(id) || (!!inlineEdit && activeId === id);
 
 /** A disk file was edited on another device: write it to disk if we still may, else leave it unsaved (•) */
 async function writeSyncedChange(d) {
@@ -1028,19 +1105,15 @@ async function writeSyncedChange(d) {
 async function onRemoteChanges(changes) {
   const closedFiles = changes.filter((c) => c.type === "updated" && c.kind === "file" && !docs.some((d) => d.id === c.id));
   if (closedFiles.length) toast(`${closedFiles.length === 1 ? "A file" : closedFiles.length + " files"} you opened here changed on another device. Open from the Library to save.`, 4500);
+  const reset = changes.find((c) => c.type === "reset");
+  if (reset) toast(`${reset.count} documents were missing from Google Drive. Uploading them again from this device.`, 4500);
+  if (changes.some((c) => c.merged && docs.some((d) => d.id === c.id))) toast("Merged with edits from another device", 2500);
   for (const c of changes) {
     const d = docs.find((x) => x.id === c.id);
     if (!d) continue;
     if (c.type === "updated") {
       const rec = await db.get(c.id);
-      if (!rec) continue;
-      const busy = pending.has(d.id) || (inlineEdit && activeId === d.id);
-      if (busy) {
-        // you're mid-edit: keep your version, save the incoming one as a separate note
-        await db.put({ ...rec, id: newId(), name: conflictCopyName(rec.name), remoteId: undefined, remoteVersion: undefined, syncedAt: undefined, updated: Date.now() });
-        toast("This note changed on another device too. Saved that version as a conflicted copy.", 4000);
-        continue;
-      }
+      if (!rec || isBusy(d.id)) continue; // mid-edit: merged on the next round
       d.text = rec.text ?? "";
       if (d.kind === "file") {
         d.dirty = true;
@@ -1094,12 +1167,31 @@ applyTheme();
 new ResizeObserver(([e]) => document.documentElement.style.setProperty("--bar-h", e.target.offsetHeight + "px")).observe(document.querySelector(".bar"));
 els.editBtn.setAttribute("aria-pressed", String(editorOpen));
 requestPersistence();
-const ready = restoreSession().catch(console.error).then(async () => {
+/** One-time cleanup: drop "conflicted copy" notes and merge documents that share a name */
+async function cleanupLibrary() {
+  if (await db.getMeta("cleanup-v2").catch(() => null)) return;
+  const all = await db.all();
+  const groups = new Map();
+  for (const r of all) {
+    if (r.kind === "note" && /\(conflicted copy [^)]*\)\.\w+$/i.test(r.name)) { await db.del(r.id, { fromSync: true }); continue; }
+    const k = nameKey(r.name);
+    groups.set(k, [...(groups.get(k) || []), r]);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    // keep the disk file if there is one, otherwise the most recently edited
+    list.sort((a, b) => (b.kind === "file") - (a.kind === "file") || (b.updated || 0) - (a.updated || 0));
+    for (const r of list.slice(1)) await db.del(r.id, { fromSync: true });
+  }
+  await db.setMeta("cleanup-v2", true);
+}
+
+const ready = cleanupLibrary().catch(console.error).then(restoreSession).catch(console.error).then(async () => {
   renderTabs();
   syncEditorFromDoc();
   renderPreview();
   renderSyncUI();
-  const flag = await initSync({ onRemoteChanges });
+  const flag = await initSync({ onRemoteChanges, isOpen: (id) => docs.some((d) => d.id === id), isBusy });
   if (flag === "connected") toast("Google Drive connected. Syncing your notes…", 3000);
   else if (flag === "cancelled") toast("Google sign-in cancelled");
   else if (flag === "error") toast("Couldn't connect Google Drive. Try again.", 3500);
