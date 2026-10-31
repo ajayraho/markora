@@ -2,6 +2,7 @@
 // Each column is a <textarea> over a highlight layer with identical metrics, so editing stays
 // native (undo, selection, IME) while the colours update underneath.
 import { diffComm } from "node-diff3";
+import DiffMatchPatch from "diff-match-patch";
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const LINE_H = 20; // px, must match .dv-ta / .dv-hl line-height
@@ -40,18 +41,18 @@ function compute(left, right) {
   return { L, R, sideL, sideR, mapLR, added, removed, same: left === right };
 }
 
-/** Character-level diff of two changed lines (skipped for very long lines) */
+/** Character-level diff of two changed lines (Myers diff + semantic cleanup, like IDEs) */
+const dmp = new DiffMatchPatch();
+dmp.Diff_Timeout = 0.05; // per line; bail out to a coarser diff on pathological input
 function charDiff(a, b) {
-  if (a.length * b.length > 250_000) return [`<mark class="d">${esc(a)}</mark>`, `<mark class="a">${esc(b)}</mark>`];
-  // tokenise into words / spaces / punctuation so highlights land on whole words
-  const tok = (s) => s.match(/\w+|\s+|[^\w\s]/g) || [];
+  const diffs = dmp.diff_main(a, b);
+  dmp.diff_cleanupSemantic(diffs); // "value→total" instead of "v→tot…ue" noise; exact chars otherwise
   let ha = "", hb = "";
-  for (const c of diffComm(tok(a), tok(b))) {
-    if (c.common) { const t = esc(c.common.join("")); ha += t; hb += t; }
-    else {
-      if (c.buffer1.length) ha += `<mark class="d">${esc(c.buffer1.join(""))}</mark>`;
-      if (c.buffer2.length) hb += `<mark class="a">${esc(c.buffer2.join(""))}</mark>`;
-    }
+  for (const [op, text] of diffs) {
+    const t = esc(text);
+    if (op === 0) { ha += t; hb += t; }
+    else if (op === -1) ha += `<mark class="d">${t}</mark>`;
+    else hb += `<mark class="a">${t}</mark>`;
   }
   return [ha, hb];
 }
